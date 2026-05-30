@@ -1,4 +1,4 @@
-# Plan: Preguntas Interactivas en `/canva-mockup` (Rev. 10)
+# Plan: Preguntas Interactivas en `/canva-mockup` (Rev. 11)
 
 **Fecha**: 2026-05-30
 **Estado**: Pendiente de aprobación
@@ -33,11 +33,15 @@ Esta proposal asume que el commit `7d571b6` ya está en main:
 
 ## Breaking Changes
 
-**`findPlanDir()` exit code migration**: Actualmente lanza `GSDC_JSON_PARSE_ERROR` (exit 15) cuando un plan no existe. Esta proposal lo migra a `GSDC_PLAN_NOT_FOUND` (exit 24) para **todas** las funciones existentes. **Pre-implementation step**: ejecutar `rg "exit.*15|GSDC_JSON_PARSE_ERROR|exitCode.*15|code.*15" templates/ bin/ tests/ docs/` y auditar cada hit antes de cambiar código. Funciones afectadas: `findPlanDir()`, `status()`, `confirmDecisions()`, `resolveQuestions()`, `submitMockup()`, `approveMockup()`.
+**`findPlanDir()` exit code migration**: `GSDC_JSON_PARSE_ERROR` (exit 15) → `GSDC_PLAN_NOT_FOUND` (exit 24) para todas las funciones. **Pre-implementation step**: `rg "exit.*15|GSDC_JSON_PARSE_ERROR|exitCode.*15|code.*15" templates/ bin/ tests/ docs/` y auditar cada hit. Funciones afectadas: `findPlanDir()`, `status()`, `confirmDecisions()`, `resolveQuestions()`, `submitMockup()`, `approveMockup()`.
 
-**`hashAlgorithm` upgrade**: Nuevas confirmaciones usan `sha256-decisions-v2` (7 campos). Planes existentes con `sha256-decisions-v1` son soportados — la primera re-confirmación migra automáticamente.
+**`hashAlgorithm` upgrade**: `confirmDecisions()` siempre computa hash v2 (7 campos con `assets`). Planes existentes con hash v1 almacenado son verificados con la normalize vieja (`NFC`, case-sensitive). La confirmación migra automáticamente a v2.
 
-**`readJsonOrThrow()` migration**: Las siguientes funciones cambian error codes al adoptar el helper: `status()` (missing decisions.json: 15→25), `confirmDecisions()` (15→25), `resolveQuestions()` (15→25), `submitMockup()` (15→25), `questions()` (nueva), `answer()` (nueva), `resetConfirmation()` (nueva).
+**`readJsonOrThrow()` migration**: `status()`, `confirmDecisions()`, `resolveQuestions()`, `submitMockup()` cambian missing-file de exit 15 → 25.
+
+**Placeholder detection**: `includes()` → `===` (exact match). Valores como `"PENDIENTE DE REVISIÓN"` o `"TODO: definir colores"` ya NO son detectados como placeholder — solo los valores exactos de la lista. Esto es intencional.
+
+**CLI `handleError` fallbacks**: Actualizar `err.exitCode || 15` y `err.exitCode || 19` a `err.exitCode || 1` (generic fallback). Cualquier error sin `exitCode` explícito usa 1, no un code viejo.
 
 ---
 
@@ -45,7 +49,7 @@ Esta proposal asume que el commit `7d571b6` ya está en main:
 
 ### 1. `lib/plan-manager.js` — `FIELD_REGISTRY` y helpers compartidos
 
-**`FIELD_REGISTRY`**: Constante a nivel módulo — única fuente de verdad para los 7 campos. Todas las funciones derivan de ella:
+**`FIELD_REGISTRY`**: Constante a nivel módulo — única fuente de verdad:
 
 ```js
 const FIELD_REGISTRY = [
@@ -84,17 +88,16 @@ const FIELD_REGISTRY = [
 
 const REQUIRED_FIELDS = FIELD_REGISTRY.filter(f => f.required).map(f => f.id);
 const ALL_FIELDS = FIELD_REGISTRY.map(f => f.id);
+const OPTIONAL_FIELDS = FIELD_REGISTRY.filter(f => !f.required).map(f => f.id);
 ```
 
-Campos tipo `choice` incluyen `"Otro (personalizado)"` como última opción en la salida de `questions()` — viene del `FIELD_REGISTRY` con `value: ""` y `customFollowUp`.
+**`ensureV2Fields(decisions)`**: Normaliza planes v1.1: `decisions.optionalAnswered = decisions.optionalAnswered || {}; decisions.assets = decisions.assets !== undefined ? decisions.assets : "";`. Se llama al inicio de **todas** las funciones que leen `decisions.json`: `questions()`, `answer()`, `resetConfirmation()`, `confirmDecisions()`, `resolveQuestions()`, `submitMockup()`, `status()`. Después de state validation, antes de cualquier operación.
 
-**`ensureV2Fields(decisions)`**: Helper que normaliza planes v1.1 agregando campos faltantes: `decisions.optionalAnswered = decisions.optionalAnswered || {}; decisions.assets = decisions.assets !== undefined ? decisions.assets : "";`. Llamado al inicio de `questions()`, `answer()`, y `resetConfirmation()` antes de cualquier operación. Garantiza que planes creados antes de v1.2 funcionan sin crash.
+**`findPlanDirOrThrow(planId, cwd)`**: `GSDC_PLAN_NOT_FOUND` (exit 24) cuando directorio no existe. Migrar todas las funciones existentes.
 
-**`findPlanDirOrThrow(planId, cwd)`**: Extraer `findPlanDir()` a helper dedicado que lanza `GSDC_PLAN_NOT_FOUND` (exit 24) cuando el directorio no existe. Migrar todas las funciones existentes.
+**`readJsonOrThrow(filePath)`**: Archivo no existe → `GSDC_PLAN_ARTIFACT_MISSING` (exit 25). JSON corrupto → `GSDC_JSON_PARSE_ERROR` (exit 15). No aplica a `list()`.
 
-**`readJsonOrThrow(filePath)`**: Helper para parsing de JSON. Archivo no existe → `GSDC_PLAN_ARTIFACT_MISSING` (exit 25). JSON corrupto → `GSDC_JSON_PARSE_ERROR` (exit 15). No aplica a `list()`.
-
-**Distinción de errores**: `GSDC_PLAN_NOT_FOUND` (24) = directorio no existe. `GSDC_PLAN_ARTIFACT_MISSING` (25) = archivo falta dentro de plan existente. `GSDC_ARTIFACT_MISSING` (20) = se mantiene para `submitMockup()` (mockup.html falta).
+**Distinción de errores**: `GSDC_PLAN_NOT_FOUND` (24) = directorio no existe. `GSDC_PLAN_ARTIFACT_MISSING` (25) = archivo falta dentro de plan. `GSDC_MOCKUP_MISSING` (20) = rename de `GSDC_ARTIFACT_MISSING` — mockup.html falta durante submit (nombre más explícito).
 
 **`getEmptyFields(decisions, fieldList, optionalAnswered)`**:
 
@@ -111,23 +114,23 @@ function getEmptyFields(decisions, fieldList, optionalAnswered = {}) {
 }
 ```
 
-`confirmDecisions()`, `resolveQuestions()`, `questions()` usan este helper.
-
 **Semántica de contadores**:
-- `requiredFieldsComplete`: `true` cuando `requiredPendingCount === 0`. Significa "presentar resumen y pedir confirmación". NO es permiso para auto-confirmar.
+- `requiredFieldsComplete`: `true` cuando `requiredPendingCount === 0`. El agente debe preguntar assets (si pending) y luego presentar resumen. No es permiso para auto-confirmar ni para saltar opcionales.
 - `allQuestionsAnswered`: `true` cuando `requiredPendingCount === 0 && optionalPendingCount === 0`.
 
-**`optionalAnswered` en `decisions.json`**: Objeto `optionalAnswered: {}` que rastrea qué campos opcionales fueron respondidos (con valor o vacío). Se set `optionalAnswered[field] = true` para **cualquier** respuesta a un campo opcional — tanto `"Logo PNG"` como `""` (declinado). `getEmptyFields()` excluye campos con `optionalAnswered[field] === true`. El nombre es preciso: "este campo opcional fue respondido".
+**`optionalAnswered`**: Se set `optionalAnswered[field] = true` para **toda** respuesta a campo opcional (vacío o no). `getEmptyFields()` excluye campos con flag `true`.
 
 ### 2. `lib/plan-manager.js` — Agregar función `questions(planId)`
 
-Leer `decisions.json`, filtrar campos vacíos/placeholders, retornar datos crudos (sin wrapper — CLI envuelve via `handleSuccess()`):
+Retorna datos crudos (CLI envuelve via `handleSuccess()`):
 
 ```json
 {
   "planId": "001",
   "phase": "mockup",
   "status": "questions_pending",
+  "readOnly": false,
+  "confirmed": false,
   "totalFields": 7,
   "filledCount": 0,
   "requiredPendingCount": 6,
@@ -223,11 +226,14 @@ Leer `decisions.json`, filtrar campos vacíos/placeholders, retornar datos crudo
 - Plan no existe → `GSDC_PLAN_NOT_FOUND` (exit 24)
 - `decisions.json` corrupto → `GSDC_JSON_PARSE_ERROR` (exit 15)
 - `decisions.json` faltante → `GSDC_PLAN_ARTIFACT_MISSING` (exit 25)
-- Plan en `mockup:questions_pending` → flujo normal con pending/filled
-- Plan en cualquier estado post-`questions_pending` (`ready_for_html`, `pending_approval`, `approved`, etc.) → retorna snapshot read-only con `readOnly: true`, `filled` con todos los campos, `pending: []`. El agente puede inspeccionar decisiones. Para editar, usar `reset-confirmation` (solo disponible para `ready_for_html` y `pending_approval` — ver sección 4).
-- `questions()` **nunca** lanza `GSDC_INVALID_STATE` — siempre retorna data, sea interactiva o read-only.
+- `mockup:questions_pending` + `confirmed === false` → flujo normal con `readOnly: false`, `confirmed: false`
+- `mockup:questions_pending` + `confirmed === true` (entre confirm y resolve) → `readOnly: true`, `confirmed: true`, `pending: []`. El agente informa "confirmado, esperando transición" y no permite answers.
+- Cualquier estado post-`questions_pending` (`ready_for_html`, `pending_approval`, `approved`, etc.) → `readOnly: true`, `confirmed: true/false` según corresponda, `status` refleja el estado real del plan, `filled` con todos, `pending: []`.
+- `questions()` **nunca** lanza `GSDC_INVALID_STATE`.
 
-**Lock**: `questions()` adquiere lock global antes de leer, libera en `finally`.
+**`questions()` no persiste migración**: `ensureV2Fields()` modifica en memoria pero no escribe a disco (es read-only). La migración se persiste en la primera llamada a `answer()`, `resetConfirmation()`, o `confirmDecisions()`.
+
+**Lock**: `questions()` adquiere lock antes de leer, libera en `finally`.
 
 ### 3. `lib/plan-manager.js` — Agregar función `answer(planId, field, value)`
 
@@ -239,9 +245,15 @@ gsd-canva plan answer --id 001 --field assets --value "Logo en PNG"
 
 Comportamiento:
 - Valida que `field` esté en `ALL_FIELDS`
-- **Orden de operaciones**: acquire lock → leer `decisions.json` → `ensureV2Fields()` → validar estado `mockup:questions_pending` → validar `confirmation.confirmed !== true` → escribir atómicamente → release lock en `finally`
-- No actualiza `plan.json` por diseño — audit trail en `decisions.json`
-- **Campos opcionales**: Para cualquier campo `required: false`, set `optionalAnswered[field] = true` (tanto valor vacío como no vacío). Esto rastrea que el campo fue respondido. `getEmptyFields()` excluye campos con `optionalAnswered[field] === true` de los pendientes.
+- **Validación de choice values**: Si el campo es `type: 'choice'` en `FIELD_REGISTRY`:
+  - Si `value` es `""` y campo es `required: true` → aceptar pero incluir `"warning": "empty_value_for_required_choice"` en la respuesta (no fallar — `requiredFieldsComplete` será false)
+  - Si `value` es un string puramente numérico (regex `/^\d+$/`) → `GSDC_INVALID_CHOICE_VALUE` (exit 26) con mensaje "Valor numérico no válido. Usar el texto de la opción."
+  - Si `value` es exactamente `"Otro (personalizado)"` → `GSDC_INVALID_CHOICE_VALUE` (exit 26) con mensaje "Selecciona 'Otro' y provee un valor personalizado."
+  - Si `value` no coincide con ninguna opción (case-insensitive) y el campo tiene `allowCustom: true` → aceptar (valor custom)
+  - Si `value` no coincide y el campo NO tiene `allowCustom` → `GSDC_INVALID_CHOICE_VALUE` (exit 26) listando opciones válidas
+- **Orden de operaciones**: acquire lock → leer `decisions.json` → validar estado `mockup:questions_pending` → `ensureV2Fields()` → validar `confirmation.confirmed !== true` → validar choice value → escribir atómicamente → release lock en `finally`
+- No actualiza `plan.json` por diseño
+- **Campos opcionales**: `optionalAnswered[field] = true` para toda respuesta
 - Retorna datos crudos:
 
 ```json
@@ -259,8 +271,9 @@ Comportamiento:
 Errores:
 - `field` no reconocido → `GSDC_INVALID_FIELD` (exit 22)
 - Plan no existe → `GSDC_PLAN_NOT_FOUND` (exit 24)
-- Estado incorrecto (no `questions_pending`) → `GSDC_INVALID_STATE` (exit 13)
+- Estado incorrecto → `GSDC_INVALID_STATE` (exit 13)
 - Ya confirmado → `GSDC_DECISIONS_LOCKED` (exit 23)
+- Valor inválido para choice → `GSDC_INVALID_CHOICE_VALUE` (exit 26)
 
 ### 4. `lib/plan-manager.js` — Agregar función `resetConfirmation(planId)`
 
@@ -270,35 +283,27 @@ gsd-canva plan reset-confirmation --id <ID>
 
 Comportamiento:
 - Valida que el plan exista
-- Acepta estados `mockup:questions_pending`, `mockup:ready_for_html` o `mockup:pending_approval`. Para `mockup:approved` y estados posteriores → `GSDC_INVALID_STATE` (exit 13) con mensaje "Post-approval reset no soportado. Crear un plan nuevo para cambios." (out of scope para esta versión).
-- **Idempotencia (condición explícita)**:
-  ```
-  if (state === 'questions_pending' && confirmed !== true && !mockupExists) → no-op
-  else → proceed with cleanup
-  ```
-  Verifica tres condiciones, no solo state. Cualquier otra combinación procede.
-- Si el estado es `ready_for_html` o `pending_approval`, revierte a `mockup:questions_pending`
-- Si existe `mockup.html`, lo renombra a `mockup.html.stale.<timestamp>`
-- Limpia en `decisions.json`: `confirmed = false`, `confirmedAt = null`, `decisionsHash = ""`, `hashAlgorithm = ""`, `optionalAnswered = {}`, y valores de campos opcionales a `""` (ej: `assets = ""`)
-- **Orden de operaciones** (decisions.json primero para evitar estado inconsistente):
+- Acepta estados `mockup:questions_pending`, `mockup:ready_for_html` o `mockup:pending_approval`
+- **Idempotencia**: `if (state === 'questions_pending' && confirmed !== true && !mockupExists) → no-op`
+- Si `ready_for_html` o `pending_approval`, revierte a `mockup:questions_pending`
+- Si existe `mockup.html`, renombra a `.stale.<timestamp>`
+- Limpia en `decisions.json`: `confirmed = false`, `confirmedAt = null`, `decisionsHash = ""`, `hashAlgorithm = ""`, `optionalAnswered = {}`, y **itera `OPTIONAL_FIELDS`** para poner cada valor a `""` (no hardcodea `assets`)
+- **Orden de operaciones**:
   1. Acquire lock
-  2. Leer archivos (`plan.json`, `decisions.json`)
+  2. Leer archivos
   3. Validar estado
-  4. Escribir `decisions.json`: `confirmed = false`, `confirmedAt = null`, `decisionsHash = ""`, `hashAlgorithm = ""`, `optionalAnswered = {}`, `assets = ""`
-  5. Escribir `plan.json`: estado `mockup:questions_pending` + push history entry `{ action: 'reset-confirmation', from: previousState, to: 'questions_pending', timestamp }`. Si el último history entry ya tiene `action: 'reset-confirmation'` con mismo `from` → no duplicar (idempotencia de history).
+  4. Escribir `decisions.json`: limpiar confirmation + `optionalAnswered = {}` + iterar `OPTIONAL_FIELDS` poner a `""`
+  5. Escribir `plan.json`: estado `questions_pending` + push history `{ action: 'reset-confirmation', from, to, timestamp }`. Si último entry ya tiene `action: 'reset-confirmation'` con mismo `from` → no duplicar.
   6. Renombrar `mockup.html` a `.stale` si existe
   7. Release lock en `finally`
-- **Recuperación de fallos parciales**:
-  - Si falla después de paso 4 (decisions limpio) pero antes de paso 5 (plan.json): estado sigue `ready_for_html`/`pending_approval` con `confirmed = false`. `answer()` falla con `GSDC_INVALID_STATE` — error claro y diagnosable. Re-ejecutar procede desde paso 5.
-  - Si falla después de paso 5 (plan limpio) pero antes de paso 6 (mockup rename): estado `questions_pending`, `confirmed = false`, mockup existe. Re-ejecutar: idempotency check ve `mockupExists === true` → procede con rename.
-  - Si falla en paso 4: estado original se mantiene, re-ejecutar procede normalmente.
-- Retorna confirmación del reset + nuevo estado + si mockup fue staled
+- **Recuperación**: Si falla después de paso 4, estado es `ready_for_html`/`pending_approval` + `confirmed=false` → `answer()` falla con `GSDC_INVALID_STATE` (diagnósable). Re-ejecutar procede desde paso 5. Si falla después de paso 5, re-ejecutar ve mockupExists → procede con rename.
+- Retorna confirmación + nuevo estado + si mockup fue staled
 
 Errores:
 - Plan no existe → `GSDC_PLAN_NOT_FOUND` (exit 24)
-- Estado `approved` o posterior → `GSDC_INVALID_STATE` (exit 13) con mensaje específico
+- Estado `approved` o posterior → `GSDC_INVALID_STATE` (exit 13)
 
-### 5. `bin/gsd-canva.js` — Agregar subcomandos
+### 5. `bin/gsd-canva.js` — Agregar subcomandos + fix fallbacks
 
 ```
 gsd-canva plan questions --id <ID> [--json]
@@ -306,7 +311,9 @@ gsd-canva plan answer --id <ID> --field <campo> --value <valor> [--json]
 gsd-canva plan reset-confirmation --id <ID> [--json]
 ```
 
-En modo `--json`: `handleSuccess()` envuelve en `{ ok: true, data: <resultado> }`.
+**CLI `handleError` fallbacks**: Cambiar todos los `err.exitCode || 15` y `err.exitCode || 19` a `err.exitCode || 1`. Cualquier error sin `exitCode` explícito usa 1 (generic).
+
+En modo `--json`: `handleSuccess()` envuelve en `{ ok: true, data }`.
 En modo humano:
 - `plan questions`:
   ```
@@ -318,93 +325,93 @@ En modo humano:
                                      9) Otro (personalizado)
   ...
   7. ¿Hay tipografías, logos o recursos visuales? (opcional)
-     Ej: Logo en PNG, fuente Montserrat...
 
   Requeridos: 0/6 · Opcionales: 0/1
   ```
 - `plan answer`: confirmación + contadores + `requiredFieldsComplete` flag.
-- `plan reset-confirmation`: confirmación + nuevo estado + mención de mockup stale si aplica ("mockup.html renombrado a mockup.html.stale.20260530-140000").
+- `plan reset-confirmation`: confirmación + nuevo estado + "mockup.html renombrado a .stale.<ts>" si aplica.
 
 ### 6. `templates/commands/canva-mockup.md` — Reemplazar SECCIÓN 2 COMPLETA
 
-**IMPORTANTE**: No reemplazar solo el roadblock. Reemplazar **toda la sección 2** para eliminar escritura directa en `decisions.json`.
-
-Texto completo que reemplaza **toda la sección 2** del template actual:
+Texto completo que reemplaza **toda la sección 2**:
 
 ```markdown
 ### 2. Levantamiento de Requisitos, Investigación y Confirmación (YIELD GATE OBLIGATORIO)
 *   **Análisis del Contexto del Usuario**:
-    *   Analiza la instrucción inicial del usuario cuidadosamente y clasifica el nivel de contexto recibido:
-        *   **Contexto Requerido Completo**: El usuario proveyó vertical, audiencia, formato, paleta, copy y CTA (los 6 campos requeridos) → Guarda esos campos inmediatamente usando `gsd-canva plan answer`. `assets` es opcional y no afecta esta clasificación.
-        *   **Contexto Parcial**: El usuario proveyó algunos datos pero no todos → Guarda **solo los campos explícitamente provistos** usando `gsd-canva plan answer`.
-        *   **Sin Contexto**: El usuario solo proveyó un nombre genérico (ej: `test2`) → No guardes nada, pasa directo a preguntas.
-    *   **Tabla de ejemplos de extracción**:
-        | Input del usuario | Campos a guardar | Razón |
+    *   Analiza la instrucción inicial del usuario y clasifica:
+        *   **Contexto Requerido Completo**: Los 6 campos requeridos provistos → Guarda con `plan answer`.
+        *   **Contexto Parcial**: Algunos datos provistos → Guarda **solo los explícitamente provistos** con `plan answer`.
+        *   **Sin Contexto**: Solo nombre genérico → No guardes nada.
+    *   **Tabla de ejemplos**:
+        | Input | Guardar | Razón |
         |---|---|---|
-        | `"quiero un banner azul para mi restaurante"` | `paleta: "azul"` | Solo "azul" es explícitamente provisto. "banner" es ambiguo, "restaurante" es inferido. |
-        | `"Instagram post, CTA: Inscríbete Ya"` | `formato: "Instagram Post (1080x1080)"`, `cta: "Inscríbete Ya"` | Formato y CTA explícitos. |
-        | `"landing page moderna, colores oscuros"` | `paleta: "colores oscuros"` | Solo la paleta es explícita. |
-    *   **Regla fallback**: Ante duda sobre si información mapea a un campo, **NO** la guardes — deja que el flujo de preguntas estructuradas la recolecte. Es mejor preguntar de más que guardar incorrectamente.
-    *   💡 **REGLA DE SUGERENCIAS**: Puedes proponer opciones al usuario como **propuestas tentativas no confirmadas**. ⚠️ **PROHIBIDO** registrarlas en `decisions.json` sin consentimiento explícito.
+        | "banner azul para mi restaurante" | `paleta: "azul"` | Solo "azul" explícito |
+        | "Instagram post, CTA: Inscríbete Ya" | `formato`, `cta` | Explícitos |
+        | "landing page, colores oscuros" | `paleta: "colores oscuros"` | Solo paleta |
+    *   **Fallback**: Ante duda, NO guardes — deja que el flujo de preguntas lo recolecte.
+    *   💡 **REGLA DE SUGERENCIAS**: Puedes proponer opciones como **propuestas tentativas**. ⚠️ **PROHIBIDO** registrarlas en `decisions.json` sin consentimiento.
 *   **Preguntas Interactivas Obligatorias**:
-    *   Ejecuta el comando para obtener las preguntas estructuradas:
+    *   Ejecuta:
         ```bash
         gsd-canva plan questions --id <ID_DE_TRES_DÍGITOS> --json
         ```
-    *   **Si `questions()` retorna `readOnly: true`**: Las decisiones ya están confirmadas. Muestra las decisiones actuales al usuario y explica que están bloqueadas. Si el usuario quiere cambios y el estado es `ready_for_html` o `pending_approval`, sugiere `reset-confirmation`. Si el estado es `approved` o posterior, informa que no se puede modificar y sugiere crear un plan nuevo.
+    *   **Si `readOnly: true`**: Decisiones bloqueadas. Muestra resumen. Si `confirmed: true` y estado es `ready_for_html`/`pending_approval`, sugiere `reset-confirmation`. Si `approved` o posterior, sugiere plan nuevo.
     *   **Renderizado de preguntas** (si hay `pending`):
-        *   Presenta cada pregunta pendiente al usuario de forma clara y numerada. Requeridos primero, assets al final.
-        *   Para campos tipo `choice`: muestra las opciones numeradas **exactamente como vienen en el JSON**, incluyendo "Otro (personalizado)".
-        *   Para campos tipo `text`: muestra el placeholder como guía.
-        *   Espera la respuesta del usuario antes de pasar a la siguiente pregunta.
-        *   **Mapeo de entrada numérica**: Si el usuario responde con un número, mapearlo al `value` de la opción correspondiente. `--value` siempre recibe texto final, nunca el índice.
-        *   **Respuestas multi-campo**: Si el usuario responde con múltiples campos en un mensaje (ej: "SaaS, Instagram Post, jóvenes"), extrae cada par campo-valor y ejecuta `plan answer` para cada uno secuencialmente. Si algún campo es ambiguo, pide aclaración antes de guardar.
-        *   **Matching en choice fields**: Si el texto del usuario no coincide exactamente con un `value` (case-insensitive), muestra las opciones más cercanas o la lista completa numerada para confirmar. No pases texto libre como valor de choice — solo valores exactos de opción o texto de "Otro (personalizado)".
-        *   **Opción "Otro (personalizado)"**: Si el usuario la selecciona, haz la pregunta de seguimiento usando `customFollowUp`. Solo el texto resultante se pasa a `plan answer`. ⚠️ **PROHIBIDO** guardar `"Otro"` o un índice como valor.
-    *   **Pregunta recomendada de assets**: Si `optionalPendingCount > 0`, pregunta si el usuario quiere proveer assets. Si dice que no o lo omite: ejecuta `plan answer --field assets --value ""`.
-    *   **Guardado de respuestas y transición**:
-        *   Por cada respuesta, ejecuta:
+        *   Presenta preguntas pendientes numeradas. Requeridos primero.
+        *   Para `choice`: muestra opciones numeradas exactamente como vienen en JSON.
+        *   Para `text`: muestra placeholder.
+        *   **Mapeo numérico**: número → `value` de opción. `--value` siempre texto final.
+        *   **Matching en choices**: Si el texto del usuario es case-insensitive substring de exactamente una opción, mostrar esa opción para confirmar. Si coincide con múltiples o ninguna, mostrar lista completa numerada. No pasar texto libre como valor de choice.
+        *   **Multi-campo**: Si el usuario responde con múltiples valores en un mensaje:
+            1. Mapear por semántica (contenido → campo), no por posición
+            2. Si cantidad no coincide con campos pendientes → no guardar nada, pedir aclaración
+            3. Si algún mapeo es incierto → no guardar ese campo, preguntar
+            4. Guardar campos exitosos uno por uno con `plan answer`
+        *   **"Otro (personalizado)"**: Si selecciona esta opción, hacer follow-up con `customFollowUp`. Solo el texto resultante va a `plan answer`. ⚠️ **PROHIBIDO** guardar `"Otro (personalizado)"` o índices numéricos.
+    *   **Pregunta de assets**: Si `optionalPendingCount > 0`, preguntar assets. Si el usuario dice que no → `plan answer --field assets --value ""`.
+    *   **Guardado y transición**:
+        *   Por cada respuesta:
             ```bash
-            gsd-canva plan answer --id <ID_DE_TRES_DÍGITOS> --field <campo> --value "<respuesta>"
+            gsd-canva plan answer --id <ID> --field <campo> --value "<respuesta>"
             ```
-        *   Después de cada `plan answer`, revisa la respuesta. Si `requiredFieldsComplete === true`, avanza al paso de Revisión/Confirmación abajo. Si no, continúa con la siguiente pregunta pendiente.
+        *   Después de cada `plan answer`:
+            - Si `requiredFieldsComplete === false` → siguiente pregunta pendiente
+            - Si `requiredFieldsComplete === true` Y `optionalPendingCount > 0` → preguntar assets
+            - Si `requiredFieldsComplete === true` Y `optionalPendingCount === 0` → avanzar a Revisión/Confirmación
         *   ⚠️ **PROHIBIDO** escribir directamente en `decisions.json`.
-    *   **Manejo de errores en flujo interactivo**:
-        | Error | Acción del agente |
+    *   **Manejo de errores**:
+        | Error | Acción |
         |---|---|
-        | `GSDC_DECISIONS_CHANGED_AFTER_CONFIRMATION` (21) | Decisiones modificadas post-confirmación. Ejecutar `reset-confirmation` y repetir flujo. |
-        | `GSDC_INVALID_FIELD` (22) | Re-ejecutar `plan questions` para obtener campos válidos. |
-        | `GSDC_DECISIONS_LOCKED` (23) | Las decisiones están confirmadas. Si el usuario quiere cambios, ejecutar `reset-confirmation`. ⚠️ PROHIBIDO editar `decisions.json` directamente. |
-        | `GSDC_PLAN_NOT_FOUND` (24) | Reportar que el plan no existe. Sugerir `plan create`. |
-        | `GSDC_PLAN_ARTIFACT_MISSING` (25) | Falta un archivo requerido del plan. Detener flujo. |
-        | `GSDC_INVALID_STATE` (13) | Ejecutar `plan status` y explicar estado. Si el estado permite reset (`ready_for_html`/`pending_approval`), sugerir `reset-confirmation`. |
-        | `GSDC_JSON_PARSE_ERROR` (15) | `decisions.json` corrupto. Detener flujo. Pedir intervención manual. |
-        Nota: `questions()` no lanza `GSDC_INVALID_STATE` — retorna `readOnly: true` para estados post-confirmación. La fila de exit 13 aplica solo a `answer()`.
-*   **Poblado de archivos Markdown (espejo de decisions.json)**:
-    *   Actualizar como espejo de lo que ya está en `decisions.json`.
-    *   ⚠️ **PROHIBIDO** editar Markdown con datos que no estén primero en `decisions.json`.
-    *   Escribe preguntas faltantes en `preguntas.md`.
-*   **Revisión Final y Confirmación Explícita (OBLIGATORIO antes de congelar)**:
-    1. Presenta un resumen completo de todas las respuestas registradas.
-    2. Destaca qué es dato confirmado vs sugerencia tentativa.
-    3. Pide confirmación explícita: **"Responde 'confirmo' para continuar con estas decisiones."**
-    4. ⚠️ **DETÉN la ejecución** hasta que el usuario responda.
-    5. **Parsing de confirmación**: Solo la palabra `"confirmo"` (case-insensitive, trimmed, sin texto adicional) cuenta como confirmación. Si la respuesta contiene "confirmo" pero también texto adicional (ej: "confirmo, gracias"), responde: "Para confirmar, responde únicamente con la palabra 'confirmo'." — no entres en flujo de edición. Cualquier otra respuesta → pregunta si quiere hacer cambios y vuelve al flujo de `plan answer`.
-    6. Solo después de recibir "confirmo":
-        - Ejecuta `gsd-canva plan confirm-decisions --id <ID>`.
-        - Ejecuta `gsd-canva plan resolve-questions --id <ID>`.
-    7. ⚠️ **PROHIBIDO** ejecutar `confirm-decisions` o `resolve-questions` sin "confirmo" explícito.
-    8. ⚠️ **PROHIBIDO** generar `mockup.html` o ejecutar transiciones de fase de forma autónoma.
-*   **Corrección de decisiones ya confirmadas**:
-    *   Si el usuario quiere corregir y el plan ya tiene `mockup.html` (estado `ready_for_html` o `pending_approval`), el agente **debe** advertir: ⚠️ "Esto invalidará el mockup actual. ¿Deseas continuar?"
-    *   Si el usuario confirma, ejecuta `reset-confirmation`.
-    *   Luego usa `plan answer` para modificar y repite confirmación.
+        | `GSDC_DECISIONS_CHANGED_AFTER_CONFIRMATION` (21) | Ejecutar `reset-confirmation` y repetir. |
+        | `GSDC_INVALID_FIELD` (22) | Re-ejecutar `plan questions`. |
+        | `GSDC_DECISIONS_LOCKED` (23) | Preguntar si ejecutar `reset-confirmation`. |
+        | `GSDC_PLAN_NOT_FOUND` (24) | Sugerir `plan create`. |
+        | `GSDC_PLAN_ARTIFACT_MISSING` (25) | Detener flujo. |
+        | `GSDC_INVALID_CHOICE_VALUE` (26) | Mostrar opciones válidas. Re-preguntar. |
+        | `GSDC_INVALID_STATE` (13) | Ejecutar `plan status`. Sugerir `reset-confirmation` si aplica. Nota: `questions()` no lanza este error — retorna `readOnly`. |
+        | `GSDC_JSON_PARSE_ERROR` (15) | Detener flujo. Pedir intervención manual. |
+        | Cualquier otro código | Detener flujo. Reportar error completo. Sugerir `plan status`. |
+        Nota: `reset-confirmation` es idempotente — si falla, reintentar una vez. Si persiste, reportar estado.
+*   **Poblado de archivos Markdown**:
+    *   Actualizar como espejo de `decisions.json`. ⚠️ **PROHIBIDO** editar Markdown con datos que no estén primero en `decisions.json`.
+*   **Revisión Final y Confirmación**:
+    1. Presenta resumen de todas las respuestas.
+    2. Destaca confirmado vs tentativo.
+    3. **"Responde 'confirmo' para continuar."**
+    4. ⚠️ **DETÉN** hasta respuesta.
+    5. **Parsing**: Strip trailing `.`, `!`, `,` del input. Luego comparar con `"confirmo"` (case-insensitive, trimmed). Si no coincide → "Para confirmar, responde únicamente 'confirmo'." No entrar en flujo de edición.
+    6. Solo con "confirmo":
+        - `gsd-canva plan confirm-decisions --id <ID>`
+        - `gsd-canva plan resolve-questions --id <ID>`
+    7. ⚠️ **PROHIBIDO** ejecutar sin "confirmo". **PROHIBIDO** generar `mockup.html` autónomamente.
+*   **Corrección post-confirmación**:
+    *   Si hay `mockup.html`: ⚠️ "Esto invalidará el mockup. ¿Continuar?"
+    *   Si confirma: `reset-confirmation` → `plan answer` → nueva confirmación.
     *   ⚠️ **PROHIBIDO** editar `decisions.json` directamente.
 ```
 
 ### 7. `lib/plan-manager.js` — `create()` inicializa campos nuevos
 
-`decisions.json` generado por `create()` incluye:
 ```json
 {
   "vertical": "",
@@ -418,13 +425,16 @@ Texto completo que reemplaza **toda la sección 2** del template actual:
 }
 ```
 
-`hashAlgorithm` se inicializa como `"sha256-decisions-v2"` en `create()`.
+`hashAlgorithm: "sha256-decisions-v2"` en `create()`.
 
 ### 8. `lib/plan-manager.js` — Hash criptográfico con migración v1→v2
 
 ```js
+const NORMALIZE_V1 = (v) => String(v || '').trim().normalize('NFC');
+const NORMALIZE_V2 = (v) => String(v || '').trim().normalize('NFC');
+
 function computeDecisionsHash(decisions, hashAlgorithm) {
-  const normalize = (v) => String(v || '').trim().toLowerCase();
+  const normalize = hashAlgorithm === 'sha256-decisions-v1' ? NORMALIZE_V1 : NORMALIZE_V2;
   const fields = hashAlgorithm === 'sha256-decisions-v1'
     ? ['vertical', 'audiencia', 'formato', 'paleta', 'copy', 'cta']
     : ['vertical', 'audiencia', 'formato', 'paleta', 'copy', 'cta', 'assets'];
@@ -433,140 +443,137 @@ function computeDecisionsHash(decisions, hashAlgorithm) {
 }
 ```
 
-**Dispatch**: `sha256-decisions-v1` → 6 campos. Cualquier otro caso (`sha256-decisions-v2`, `""`, `undefined`) → 7 campos. El fallback es explícitamente v2.
+**La normalize es la misma** (`NFC`, case-sensitive) para v1 y v2. Esto garantiza compatibilidad exacta con hashes existentes.
 
-**Migración**: `confirmDecisions()`, `resolveQuestions()`, `submitMockup()` usan `computeDecisionsHash(decisions, confirmation.hashAlgorithm)`. `confirmDecisions()` siempre escribe `hashAlgorithm: 'sha256-decisions-v2'`. `resetConfirmation()` pone `hashAlgorithm = ""` → próxima confirmación usa v2 por el fallback.
+**`confirmDecisions()` siempre computa con v2**: Ignora el `hashAlgorithm` entrante, computa hash sobre 7 campos, escribe `hashAlgorithm: 'sha256-decisions-v2'`. Esto hace la migración atómica — hash almacenado y label siempre coinciden.
+
+**`resolveQuestions()` y `submitMockup()`**: Leen `confirmation.hashAlgorithm` y usan dispatch. Si es `sha256-decisions-v1`, usan 6 campos + normalize vieja. Cualquier otro caso (v2, vacío, undefined) → 7 campos.
 
 ### 9. Referencias cruzadas
 
-Verificar con `rg "mockup:pending" templates/ docs/ README.md` y actualizar referencias obsoletas.
+`rg "mockup:pending" templates/ docs/ README.md` → actualizar.
 
-### 10. `templates/plan-templates/preguntas.md` — Agregar campo `assets`
+### 10. `templates/plan-templates/preguntas.md` — Agregar `assets`
 
-Agregar sección `Assets / Recursos externos` como campo opcional.
-
-### 11. `tests/plan.test.js` — Tests unitarios
+### 11. `tests/plan.test.js`
 
 **FIELD_REGISTRY y helpers**:
-- **Test FIELD_REGISTRY consistency**: cada `id` aceptado por `answer()`, `questions()` output length = registry size.
-- **Test optionalAnswered migration v1.1**: fixture sin `optionalAnswered` → `plan answer --field assets --value ""` → éxito, `optionalAnswered.assets === true`.
-- **Test optionalAnswered migration v1.1 questions**: fixture sin `optionalAnswered` → `plan questions` → éxito, `optionalPendingCount === 1`.
-- **Test ensureV2Fields**: fixture v1.1 sin `assets` ni `optionalAnswered` → después de cualquier operación, ambos campos existen.
+- FIELD_REGISTRY consistency: cada `id` aceptado por `answer()`, `questions()` length = registry.
+- optionalAnswered migration v1.1: fixture sin `optionalAnswered` → `answer(assets, "")` → éxito, flag set.
+- optionalAnswered migration v1.1 questions: fixture → `questions()` → éxito.
+- ensureV2Fields in confirmDecisions: fixture v1.1 → `confirmDecisions()` → `assets: ""`, `optionalAnswered: {}` en disco.
 
 **questions()**:
-- **Test questions vacío**: `requiredPendingCount === 6`, `optionalPendingCount === 1`, `filledCount === 0`.
-- **Test questions parcial**: 2 requeridos → `requiredPendingCount === 4`.
-- **Test questions completo**: 6 requeridos → `requiredFieldsComplete === true`, `optionalPendingCount === 1`.
-- **Test questions assets lleno**: 7 campos → `allQuestionsAnswered === true`.
-- **Test questions assets declinado**: `answer(assets, "")` → `optionalPendingCount === 0`, `allQuestionsAnswered === true`.
-- **Test questions assets no-vacío**: `answer(assets, "Logo PNG")` → `optionalAnswered.assets === true`, `optionalPendingCount === 0`.
-- **Test questions read-only ready_for_html**: `readOnly: true`, `filled` con todos, `pending: []`.
-- **Test questions read-only approved**: `readOnly: true`, sin error.
-- **Test questions plan inexistente**: exit 24.
-- **Test questions decisions corrupto**: exit 15.
-- **Test questions decisions faltante**: exit 25.
-- **Test questions Otro en JSON**: choice fields tienen "Otro (personalizado)" con `value: ""` y `customFollowUp`.
+- Vacío: `requiredPendingCount === 6`.
+- Parcial, completo, assets lleno, assets declinado, assets no-vacío (flag set).
+- Read-only ready_for_html: `readOnly: true`, `status === "ready_for_html"`.
+- Read-only approved: `readOnly: true`.
+- Read-only pending + confirmed: `readOnly: true`, `confirmed: true`.
+- Plan inexistente: exit 24. Corrupto: exit 15. Faltante: exit 25.
+- Otro en JSON: choice tiene "Otro (personalizado)" con `value: ""`.
+- questions() no persiste v2 migration: fixture v1.1 → `questions()` → disco sigue sin `optionalAnswered`.
 
 **answer()**:
-- **Test answer campo inválido**: exit 22.
-- **Test answer estado incorrecto**: exit 13.
-- **Test answer post-confirmación**: exit 23.
-- **Test answer retorna flags**: incluye `requiredFieldsComplete` y `allQuestionsAnswered`.
+- Campo inválido: exit 22. Estado incorrecto: exit 13. Post-confirmation: exit 23.
+- Choice value numérico puro (`"3"`): exit 26.
+- Choice value `"Otro (personalizado)"`: exit 26.
+- Choice value no en opciones sin allowCustom: exit 26.
+- Choice value custom con allowCustom: éxito.
+- Choice value en opciones: éxito.
+- Retorna `requiredFieldsComplete` y `allQuestionsAnswered`.
+- Empty value para required choice: éxito con `warning: "empty_value_for_required_choice"`.
 
 **resetConfirmation()**:
-- **Test reset**: `confirmed === false`, `decisionsHash === ""`, `hashAlgorithm === ""`, `optionalAnswered === {}`, `assets === ""`.
-- **Test reset history**: history contiene `action: 'reset-confirmation'`.
-- **Test reset no duplicate history**: re-ejecutar no duplica entry si ya existe el último con mismo `from`.
-- **Test reset desbloquea answer**: funciona de nuevo.
-- **Test reset limpia optional**: llenar assets, confirmar, reset → `optionalPendingCount === 1`, `assets === ""`.
-- **Test reset partial recovery**: state=questions_pending + confirmed=true → `resetConfirmation()` limpia (no es no-op).
-- **Test reset mockup stale recovery**: simular fallo antes de rename, re-ejecutar → mockup se renombra.
-- **Test reset no-op**: questions_pending + confirmed=false + sin mockup → sin cambios.
-- **Test reset approved state**: `GSDC_INVALID_STATE` con mensaje específico.
+- Reset: confirmed=false, hashAlgorithm="", optionalAnswered={}, optional values="".
+- History: contiene `reset-confirmation` entry.
+- No duplicate history on re-execution.
+- Limpia optional values: llenar assets="Logo PNG", confirmar, reset → `optionalPendingCount === 1`, `assets === ""`.
+- Deriva de OPTIONAL_FIELDS (no hardcodea `assets`): test con segundo optional field dummy.
+- Partial recovery: state=questions_pending + confirmed=true → limpia.
+- Mockup stale recovery: re-ejecutar rename.
+- No-op: questions_pending + confirmed=false + sin mockup.
+- Approved: GSDC_INVALID_STATE.
 
-**Hash migración**:
-- **Test hash v1**: fixture v1 → `resolve-questions` + `submit-mockup` pasan.
-- **Test hash v2**: plan nuevo → `hashAlgorithm === "sha256-decisions-v2"`.
-- **Test hash vacío fallback**: `hashAlgorithm = ""` → `confirmDecisions()` usa 7 campos.
-- **Test hash incluye assets**: modificar assets post-confirm → mismatch.
+**Hash**:
+- v1 fixture → resolve + submit pasan con normalize NFC.
+- v2 plan nuevo → `hashAlgorithm === "sha256-decisions-v2"`.
+- `confirmDecisions()` siempre computa v2: v1 plan → confirm → label v2 + hash v2 (7 campos) → resolve pasa.
+- `hashAlgorithm = ""` → confirm usa v2 (fallback).
+- Assets modificado post-confirm → mismatch.
+- v1 fixture con uppercase (`vertical: "Moda"`) → resolve pasa (normalize NFC preserva case).
 
 **Otros**:
-- **Test helper placeholder**: `"TBD"` → pending, `"Nodo"` → no pending, `"TODO"` → pending.
-- **Test resolve sin confirmación**: falla.
-- **Test answer no plan.json update**: timestamps no cambian.
-- **Test findPlanDir migración**: `plan status --id 999` → exit 24.
-- **Test CLI questions JSON**: no double-wrap.
-- **Test CLI questions humano**: formato correcto con numeración y contadores.
-- **Test CLI reset menciona stale**: stdout menciona stale rename cuando aplica.
-- **Test lock release**: lock file no existe después de `questions()`.
-
-### Tests de contrato CLI (`child_process`)
-
-- Usar `process.execPath` + ruta a `bin/gsd-canva.js`.
-- Capturar `planId` desde `plan create --json`.
+- Placeholder: `"TBD"` → pending. `"Nodo"` → no. `"TODO"` → yes. `"TODO: definir colores"` → no (exact match). `"PENDIENTE DE REVISIÓN"` → no.
+- findPlanDir: `plan status --id 999` → exit 24.
+- CLI questions JSON: no double-wrap.
+- CLI reset menciona stale.
+- CLI handleError fallback: error sin exitCode → exit 1.
+- Lock release after questions().
 
 ---
 
 ## Tabla de errores
 
-| Código | Exit Code | Descripción | Origen |
-|---|---|---|---|
-| `GSDC_DECISIONS_CHANGED_AFTER_CONFIRMATION` | `21` | Decisiones modificadas post-confirmación. Usar `reset-confirmation`. | Existente |
-| `GSDC_INVALID_FIELD` | `22` | Campo no reconocido. | Nuevo |
-| `GSDC_DECISIONS_LOCKED` | `23` | Modificación después de `confirm-decisions`. Usar `reset-confirmation`. | Nuevo |
-| `GSDC_PLAN_NOT_FOUND` | `24` | Directorio del plan no existe. | Nuevo (migra de exit 15) |
-| `GSDC_PLAN_ARTIFACT_MISSING` | `25` | Archivo requerido falta dentro del plan. Distinto de `GSDC_ARTIFACT_MISSING` (20). | Nuevo |
+| Código | Exit | Descripción |
+|---|---|---|
+| `GSDC_DECISIONS_CHANGED_AFTER_CONFIRMATION` | 21 | Decisiones modificadas post-confirmación. |
+| `GSDC_INVALID_FIELD` | 22 | Campo no reconocido. |
+| `GSDC_DECISIONS_LOCKED` | 23 | Modificación post-confirm. Usar `reset-confirmation`. |
+| `GSDC_PLAN_NOT_FOUND` | 24 | Directorio del plan no existe. |
+| `GSDC_PLAN_ARTIFACT_MISSING` | 25 | Archivo falta dentro del plan. |
+| `GSDC_INVALID_CHOICE_VALUE` | 26 | Valor no válido para campo choice. Ver opciones. |
+
+Nota: `GSDC_MOCKUP_MISSING` (20) renombra `GSDC_ARTIFACT_MISSING` para mockup.html.
 
 ---
 
 ## Verificación
 
-1. `npm test` — todos pasan.
-2. `plan questions --json` → `requiredPendingCount: 6`, `optionalPendingCount: 1`.
-3. `plan answer --field vertical --value "SaaS / Producto Digital" --json` → `requiredPendingCount: 5`, `requiredFieldsComplete: false`.
-4. Llenar 6 requeridos → `requiredFieldsComplete: true`.
+1. `npm test`.
+2. `plan questions --json` → `requiredPendingCount: 6`.
+3. `plan answer --field vertical --value "SaaS" --json` → `requiredPendingCount: 5`.
+4. 6 requeridos → `requiredFieldsComplete: true`, preguntar assets antes de confirmar.
 5. `confirm-decisions` → `hashAlgorithm: "sha256-decisions-v2"`.
-6. `plan answer` post-confirmar → `GSDC_DECISIONS_LOCKED` (exit 23).
-7. `reset-confirmation` → desbloquea, `optionalAnswered === {}`, `assets === ""`.
-8. `plan questions` en `ready_for_html` → `readOnly: true`, sin error.
-9. `plan questions` en `approved` → `readOnly: true`, sin error.
-10. `reset-confirmation` desde `approved` → `GSDC_INVALID_STATE` con mensaje.
-11. Confirmar + resolver → reset → `questions_pending`, mockup stale.
-12. `canva-mockup.md` sección 2 sin escritura directa.
-13. Modificar `assets` post-confirmar → hash mismatch.
-14. Fixture v1.1 → `resolve-questions` + `submit-mockup` pasan con hash v1.
-15. No double-wrap: `parsed.data.data` no existe.
-16. `plan status --id 999` → exit 24.
-17. Assets declinado → `optionalPendingCount === 0`.
-18. Reset post-decline → `optionalPendingCount === 1`, `assets === ""`.
-19. Choice fields en JSON incluyen "Otro (personalizado)" con `customFollowUp`.
-20. `"Nodo"` → no placeholder. `"TODO"` → placeholder.
-21. Fixture v1.1 sin `optionalAnswered` → `plan answer --field assets --value ""` → éxito.
-22. Pre-implementation grep: `rg "exit.*15|GSDC_JSON_PARSE_ERROR" templates/ bin/ tests/ docs/` → audit completado.
+6. Post-confirm answer → exit 23.
+7. `reset-confirmation` → `optionalAnswered === {}`, `assets === ""`.
+8. `plan questions` en ready_for_html → `readOnly: true`, `status: "ready_for_html"`.
+9. `plan questions` en approved → `readOnly: true`.
+10. Reset desde approved → exit 13.
+11. Confirm + resolver → reset → `questions_pending`, mockup stale.
+12. canva-mockup.md sin escritura directa.
+13. Assets modificado post-confirm → hash mismatch.
+14. **v1 fixture con "Moda" → resolve + submit pasan (NFC normalize preserva case)**.
+15. **v1 fixture → confirm → hash label v2 + hash v2 (7 campos) → resolve pasa**.
+16. No double-wrap.
+17. `plan status --id 999` → exit 24.
+18. `"TODO: definir colores"` → no placeholder. `"TODO"` → sí.
+19. `"confirmo."` → accepted (stripped). `"confirmo, gracias"` → rejected.
+20. `answer(vertical, "3")` → exit 26.
+21. Fixture v1.1 → `answer(assets, "")` → éxito.
+22. Pre-implementation grep audit completado.
 
 ---
 
 ## Notas
 
-- `FIELD_REGISTRY` es única fuente de verdad — `questions()`, `answer()`, `getEmptyFields()` derivan de ella.
-- `ensureV2Fields()` normaliza planes v1.1 — agrega `optionalAnswered: {}` y `assets: ""` si faltan. Previene TypeError en planes migrados.
-- `optionalAnswered` se set para **toda** respuesta a campo opcional (vacío o no). Nombre preciso: "este campo opcional fue respondido".
-- `resetConfirmation()` limpia `optionalAnswered = {}` **y** valores opcionales a `""` — permite re-preguntar todo.
-- `resetConfirmation()` escribe `decisions.json` antes de `plan.json` — si falla entre ambos, el estado refleja un estado post-confirmation (diagnósable) en vez de `questions_pending` + `confirmed=true` (confuso).
-- `resetConfirmation()` idempotency: verifica `state === questions_pending AND confirmed !== true AND !mockupExists`. Cualquier otra combinación procede con cleanup.
-- History entries se deduplican en recovery — no hay duplicados en auditoría.
-- `questions()` retorna read-only para **todos** los estados post-`questions_pending` — incluyendo `approved`.
-- `resetConfirmation()` rechaza `approved` y posterior — out of scope, se sugiere crear plan nuevo.
-- `hashAlgorithm = ""` tras reset → fallback a v2 en próxima confirmación.
-- `computeDecisionsHash` fallback: cualquier valor que no sea exactamente `'sha256-decisions-v1'` → v2 (7 campos).
-- `submitMockup()` usa mismo dispatch v1/v2.
-- Placeholder detection usa `===` — "Nodo" no es placeholder.
-- "Otro (personalizado)" viene del JSON — agents no lo hardcodean.
-- Confirmación usa trigger `"confirmo"` exacto. Si contiene texto adicional: pedir "responde únicamente 'confirmo'", no entrar en flujo de edición.
-- `answer()` retorna `requiredFieldsComplete` y `allQuestionsAnswered`.
-- Template incluye instrucciones para: transición via `requiredFieldsComplete`, manejo de `readOnly: true`, respuestas multi-campo, fuzzy matching en choices.
-- Error table aclara que `questions()` no lanza exit 13 — retorna `readOnly: true`.
-- Breaking changes documentados con pre-implementation grep step.
-- `create()` usa `sha256-decisions-v2` — nuevos planes nacen con v2.
-- `answer()` no actualiza `plan.json` por diseño.
-- Context extraction: tabla de ejemplos + fallback "ante duda, no guardes".
+- `FIELD_REGISTRY` = única fuente de verdad.
+- `ensureV2Fields()` al inicio de TODAS las funciones que leen `decisions.json` — incluyendo `confirmDecisions()`, `resolveQuestions()`, `submitMockup()`, `status()`.
+- `ensureV2Fields()` no persiste en `questions()` (read-only) — se persiste en primera mutación.
+- Normalize es `NFC` case-sensitive para v1 y v2 — compatibilidad exacta con hashes existentes. No hay `toLowerCase()`.
+- `confirmDecisions()` siempre computa hash v2 (7 campos) — migración atómica. Hash almacenado y label siempre coinciden.
+- `optionalAnswered` set para toda respuesta opcional (vacío o no).
+- `resetConfirmation()` itera `OPTIONAL_FIELDS` para limpiar valores — no hardcodea `assets`.
+- `questions()` muestra `confirmed: true` + `readOnly: true` cuando questions_pending + confirmed (entre confirm y resolve).
+- `questions()` read-only para todos los estados post-questions_pending.
+- Template transición: requiredFieldsComplete → preguntar assets → confirmar. No salta opcionales.
+- Template multi-campo: mapeo semántico, no posicional. No guardar si incierto.
+- Template matching: substring case-insensitive de exactamente 1 opción → confirmar. Múltiples/ninguna → lista completa.
+- "confirmo" parsing: strip `.`, `!`, `,` trailing antes de comparar.
+- `answer()` valida choice values: rechaza numéricos puros, "Otro (personalizado)", valores fuera de opciones.
+- `GSDC_MOCKUP_MISSING` (20) reemplaza `GSDC_ARTIFACT_MISSING` para mockup — sin colisión.
+- CLI handleError fallback → `err.exitCode || 1`.
+- Error table tiene catch-all row para códigos inesperados.
+- Reset-confirmation es idempotente y reintentable — error table lo indica.
+- `resetConfirmation()` escribe decisions.json antes que plan.json.
+- Placeholder detection `===` es breaking change documentado.
+- Breaking changes con pre-implementation grep.
