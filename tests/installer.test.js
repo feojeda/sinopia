@@ -90,9 +90,16 @@ async function run() {
     // TEST 6: Diagnóstico de Salud (doctor)
     // ==========================================
     console.log('  - Test 6: Diagnóstico y validación estructural (doctor)...');
-    const doctorResult = await installer.doctor({ agent: 'antigravity' });
-    assert.strictEqual(doctorResult.healthy, true, 'doctor debería retornar healthy: true');
-    assert.strictEqual(doctorResult.agentValidated, true, 'Debería validar el agente antigravity');
+    const doctorBasic = await installer.doctor();
+    assert.strictEqual(doctorBasic.healthy, true, 'doctor sin agente debería retornar healthy: true');
+
+    try {
+      await installer.doctor({ agent: 'antigravity' });
+      assert.fail('Doctor debería fallar cuando no hay skills instaladas');
+    } catch (err) {
+      assert.strictEqual(err.code, 'GSDC_AGENT_SKILLS_MISSING', 'Debería retornar GSDC_AGENT_SKILLS_MISSING');
+      assert.strictEqual(err.exitCode, 19, 'Exit code de skills faltantes debe ser 19');
+    }
     
     try {
       await installer.doctor({ agent: 'agente-inexistente' });
