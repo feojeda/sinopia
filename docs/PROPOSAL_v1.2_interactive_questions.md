@@ -2,7 +2,7 @@
 
 **Fecha**: 2026-05-30
 **Estado**: Pendiente de aprobación
-**Dependencias**: v1.1 architectural fixes (commit `7d571b6`) commiteado y verificado
+**Prerequisito verificable**: El branch debe partir de main con `git status --short` limpio y v1.1 aplicado (commit `7d571b6` o posterior). Si hay cambios dirty, el plan no debe implementarse.
 
 ---
 
@@ -42,7 +42,8 @@ Leer `decisions.json` del plan, filtrar campos vacíos/placeholders, y retornar:
   "planState": "mockup:questions_pending",
   "totalFields": 7,
   "filledCount": 0,
-  "pendingCount": 7,
+  "requiredPendingCount": 6,
+  "optionalPendingCount": 1,
   "filled": [],
   "pending": [
     {
@@ -130,8 +131,8 @@ Leer `decisions.json` del plan, filtrar campos vacíos/placeholders, y retornar:
 **Comportamiento ante estados inválidos**:
 - Plan no existe → `GSDC_JSON_PARSE_ERROR` (exit 15)
 - `decisions.json` corrupto → `GSDC_JSON_PARSE_ERROR` (exit 15)
-- Plan no está en `mockup:questions_pending` → retorna `pendingCount: 0` con warning
-- Todos los campos ya llenos → retorna `pendingCount: 0`, `filled` con los valores actuales
+- Plan no está en `mockup:questions_pending` → **ERROR** `GSDC_INVALID_STATE` (exit 13). Un agente no debe interpretar "sin preguntas" como permiso para avanzar.
+- Todos los campos requeridos ya llenos → retorna `requiredPendingCount: 0`, `optionalPendingCount` según corresponda, `filled` con los valores actuales.
 
 ### 2. `lib/plan-manager.js` — Agregar función `answer(planId, field, value)`
 
@@ -219,15 +220,24 @@ El campo `assets` (índice 7) tiene `required: false`. Esto significa:
 - El agente puede preguntarlo pero no debe bloquear si el usuario no lo llena.
 - Si el usuario lo provee, se guarda via `plan answer` como cualquier otro campo.
 
-**Requiere cambio en `lib/plan-manager.js`**: La función `confirmDecisions()` actualmente valida los 6 campos fijos (`vertical`, `audiencia`, `formato`, `paleta`, `copy`, `cta`). `assets` debe quedar excluido de esa validación. No requiere cambio — ya no está en la lista.
+**Requiere cambio en `lib/plan-manager.js`**:
+
+1. `create()` debe inicializar `decisions.json` con `assets: ""` para que el campo exista siempre.
+2. `confirmDecisions()` actualmente valida los 6 campos fijos (`vertical`, `audiencia`, `formato`, `paleta`, `copy`, `cta`). `assets` debe quedar excluido de esa validación — ya no está en la lista, no requiere cambio.
+
+**`plan answer` protege contra edición post-confirmación**:
+
+Si `decisions.json` tiene `confirmation.confirmed === true`, `plan answer` debe rechazar la escritura con error `GSDC_DECISIONS_LOCKED` (exit 23). Para modificar decisiones ya confirmadas, el usuario debe pedir explícitamente al agente que resetee la confirmación (poner `confirmation.confirmed = false` y `confirmation.decisionsHash = ""`) antes de poder usar `plan answer` de nuevo. El template instruye al agente sobre este flujo si el usuario quiere corregir.
 
 ### 6. `tests/plan.test.js` — Agregar tests
 
-- **Test questions vacío**: plan nuevo → `pendingCount === 7`, `filledCount === 0`, primer campo tiene `id === "vertical"`.
-- **Test questions parcial**: llenar 2 campos con `plan answer` → `pendingCount === 5`, campos llenos aparecen en `filled`.
-- **Test questions completo**: llenar los 6 campos requeridos → `pendingCount === 1` (solo `assets` queda), todos los requeridos en `filled`.
+- **Test questions vacío**: plan nuevo → `requiredPendingCount === 6`, `optionalPendingCount === 1`, `filledCount === 0`, primer campo tiene `id === "vertical"`.
+- **Test questions parcial**: llenar 2 campos requeridos con `plan answer` → `requiredPendingCount === 4`, campos llenos aparecen en `filled`.
+- **Test questions completo**: llenar los 6 campos requeridos → `requiredPendingCount === 0`, `optionalPendingCount === 1` (solo `assets` queda), todos los requeridos en `filled`.
 - **Test answer campo inválido**: `--field noexiste` → error `GSDC_INVALID_FIELD` (exit 22).
 - **Test answer estado incorrecto**: plan en `mockup:ready_for_html` → error `GSDC_INVALID_STATE` (exit 13).
+- **Test answer post-confirmación**: ejecutar `confirm-decisions` y luego `plan answer` → error `GSDC_DECISIONS_LOCKED` (exit 23).
+- **Test questions estado incorrecto**: plan en `mockup:ready_for_html` → error `GSDC_INVALID_STATE` (exit 13), no silencioso.
 
 ---
 
@@ -236,25 +246,31 @@ El campo `assets` (índice 7) tiene `required: false`. Esto significa:
 | Código | Exit Code | Descripción |
 |---|---|---|
 | `GSDC_INVALID_FIELD` | `22` | El campo especificado no es un campo conocido de `decisions.json`. |
+| `GSDC_DECISIONS_LOCKED` | `23` | No se puede modificar `decisions.json` después de `confirm-decisions`. Requiere reset manual de confirmación. |
 
 ---
 
 ## Verificación
 
-1. `npm test` — todos los tests pasan (existentes + 5 nuevos).
-2. `gsd-canva plan create --name "test" && gsd-canva plan questions --id 001 --json` → retorna esquema con 7 preguntas.
+1. `npm test` — todos los tests pasan (existentes + 7 nuevos).
+2. `gsd-canva plan create --name "test" && gsd-canva plan questions --id 001 --json` → retorna esquema con `requiredPendingCount: 6`, `optionalPendingCount: 1`.
 3. `gsd-canva plan answer --id 001 --field vertical --value "SaaS / Producto Digital"` → guarda correctamente.
-4. `gsd-canva plan questions --id 001 --json` → `pendingCount` disminuye en 1.
-5. Llenar los 6 campos requeridos → `pendingCount === 1` (solo `assets`).
+4. `gsd-canva plan questions --id 001 --json` → `requiredPendingCount` disminuye en 1.
+5. Llenar los 6 campos requeridos → `requiredPendingCount === 0`, `optionalPendingCount === 1`.
 6. `gsd-canva plan confirm-decisions --id 001` → pasa (solo requiere los 6, no `assets`).
-7. Ejecutar `/canva-mockup test3` con un agente → el agente usa `plan questions`, renderiza, guarda con `plan answer`, presenta resumen, pide confirmación, solo entonces congelar.
+7. Intentar `plan answer` después de confirmar → error `GSDC_DECISIONS_LOCKED` (exit 23).
+8. Intentar `plan questions` en plan con estado `mockup:ready_for_html` → error `GSDC_INVALID_STATE` (exit 13).
+9. Ejecutar `/canva-mockup test3` con un agente → el agente usa `plan questions`, renderiza, guarda con `plan answer`, presenta resumen, pide confirmación, solo entonces congelar.
 
 ---
 
 ## Notas
 
 - Los `value` en el JSON son siempre texto final legible — lo que el usuario selecciona es lo que se guarda en `decisions.json`. No hay códigos internos.
-- `assets` es opcional: no bloquea el Yield Gate pero se almacena si el usuario lo provee.
+- `assets` es opcional: no bloquea el Yield Gate pero se almacena si el usuario lo provee. `requiredPendingCount` y `optionalPendingCount` están separados para que el agente sepa cuándo puede avanzar.
 - El fallback a chat numerado es first-class, no un afterthought. La UI nativa es opcional.
-- `plan answer` escribe atómicamente y valida campo + estado — el agente nunca toca `decisions.json` directamente.
+- `plan answer` escribe atómicamente y valida campo + estado + confirmación bloqueada — el agente nunca toca `decisions.json` directamente.
 - La parada de revisión final es obligatoria antes de `confirm-decisions`: el usuario debe ver un resumen y confirmar explícitamente.
+- `create()` inicializa `assets: ""` para que el campo exista siempre en `decisions.json`.
+- `plan answer` rechaza escritura si `confirmation.confirmed === true` — protege el hash de integridad post-confirmación.
+- `plan questions` falla con error si el plan no está en `mockup:questions_pending` — no hay silencio ante estado incorrecto.
