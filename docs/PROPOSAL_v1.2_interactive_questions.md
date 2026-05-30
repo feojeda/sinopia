@@ -1,4 +1,4 @@
-# Plan: Preguntas Interactivas en `/canva-mockup` (Rev. 5)
+# Plan: Preguntas Interactivas en `/canva-mockup` (Rev. 6)
 
 **Fecha**: 2026-05-30
 **Estado**: Pendiente de aprobación
@@ -33,7 +33,9 @@ Esta proposal asume que el commit `7d571b6` ya está en main:
 
 ## Cambios
 
-### 1. `lib/plan-manager.js` — Helper compartido `getEmptyFields(decisions)`
+### 1. `lib/plan-manager.js` — Helper compartido `readJsonOrThrow()` y `getEmptyFields()`
+
+Extraer un helper `readJsonOrThrow(filePath)` que envuelva `JSON.parse(fs.readFileSync(...))` con manejo consistente de JSON corrupto (`GSDC_JSON_PARSE_ERROR`, exit 15). Usar este helper en todas las funciones tocadas (`questions()`, `answer()`, `resetConfirmation()`, y las existentes que usan `JSON.parse` directo).
 
 Extraer la lógica de detección de campos vacíos/placeholders que actualmente está duplicada en `confirmDecisions()` (línea 183) y se necesitará en `questions()`. Un solo helper:
 
@@ -48,7 +50,12 @@ function getEmptyFields(decisions, fieldList) {
 }
 ```
 
-`confirmDecisions()` reutiliza este helper en vez de su lógica inline. `resolveQuestions()` (línea 275) también tiene validación duplicada y debe usar el mismo helper. `questions()` lo usa para determinar `filled` vs `pending`. Esto garantiza que los tres siempre coinciden — si `questions()` dice "todo listo", `confirm-decisions` y `resolve-questions` no pueden fallar.
+`confirmDecisions()` reutiliza este helper en vez de su lógica inline. `resolveQuestions()` (línea 275) también tiene validación duplicada y debe usar el mismo helper. `questions()` lo usa para determinar `filled` vs `pending`. Esto garantiza que los tres siempre coinciden — si `questions()` reporta `readyToConfirm: true`, `confirm-decisions` y `resolve-questions` no pueden fallar.
+
+**Semántica de contadores**:
+- `readyToConfirm`: `true` cuando `requiredPendingCount === 0`. El agente puede avanzar a confirmación.
+- `allQuestionsAnswered`: `true` cuando `requiredPendingCount === 0 && optionalPendingCount === 0`. Todas las preguntas (incluida assets) fueron respondidas.
+- El agente puede confirmar cuando `readyToConfirm === true`, sin importar `optionalPendingCount`.
 
 ### 2. `lib/plan-manager.js` — Agregar función `questions(planId)`
 
@@ -62,6 +69,8 @@ Leer `decisions.json` del plan, filtrar campos vacíos/placeholders usando el he
   "filledCount": 0,
   "requiredPendingCount": 6,
   "optionalPendingCount": 1,
+  "readyToConfirm": false,
+  "allQuestionsAnswered": false,
   "filled": [],
   "pending": [
     {
@@ -196,11 +205,12 @@ gsd-canva plan reset-confirmation --id <ID>
 
 Comportamiento:
 - Valida que el plan exista
-- Acepta estados `mockup:questions_pending` o `mockup:ready_for_html`
+- Acepta estados `mockup:questions_pending`, `mockup:ready_for_html` o `mockup:pending_approval`
 - Si el estado es `ready_for_html`, revierte a `mockup:questions_pending` (actualiza `plan.json` + agrega evento al history)
 - Si existe `mockup.html` en la carpeta del plan, lo renombra a `mockup.html.stale.<timestamp>` para invalidarlo — `submitMockup()` solo acepta `mockup.html`, no `.stale`
 - Pone `confirmation.confirmed = false`, `confirmation.confirmedAt = null`, `confirmation.decisionsHash = ""`
 - Orden de operaciones: acquire lock → leer archivos → validar estado → renombrar mockup stale → escribir decisions.json → escribir plan.json → release lock en `finally`
+- **Idempotencia**: Si falla entre renombrar mockup y escribir JSON, el estado es consistente: `mockup.html` fue renombrado pero `plan.json` no fue revertido → el plan sigue en `ready_for_html` o `pending_approval` y `mockup.html` está stale. El usuario puede re-ejecutar `reset-confirmation` o regenerar el mockup. No se necesita rollback explícito porque el estado `ready_for_html`/`pending_approval` sin mockup válido es detectable por `submitMockup()`.
 - Retorna confirmación del reset + nuevo estado
 
 Errores:
@@ -235,7 +245,7 @@ Texto completo que reemplaza **toda la sección 2** del template actual:
 ### 2. Levantamiento de Requisitos, Investigación y Confirmación (YIELD GATE OBLIGATORIO)
 *   **Análisis del Contexto del Usuario**:
     *   Analiza la instrucción inicial del usuario cuidadosamente y clasifica el nivel de contexto recibido:
-        *   **Contexto Completo**: El usuario proveyó vertical, audiencia, formato, paleta, copy y CTA → Guarda esos campos inmediatamente usando `gsd-canva plan answer`.
+        *   **Contexto Requerido Completo**: El usuario proveyó vertical, audiencia, formato, paleta, copy y CTA (los 6 campos requeridos) → Guarda esos campos inmediatamente usando `gsd-canva plan answer`. `assets` es opcional y no afecta esta clasificación.
         *   **Contexto Parcial**: El usuario proveyó algunos datos pero no todos → Guarda los campos conocidos usando `gsd-canva plan answer` y deja los demás vacíos.
         *   **Sin Contexto**: El usuario solo proveyó un nombre genérico (ej: `test2`) → No guardes nada, pasa directo a preguntas.
     *   💡 **REGLA DE SUGERENCIAS**: Puedes diseñar y proponer opciones estéticas o creativas sugeridas al usuario en el chat, marcándolas **explícitamente como propuestas tentativas no confirmadas**. Sin embargo, está **PROHIBIDO** registrarlas en `decisions.json` o darlas por definitivas en `requerimientos.md` o `investigacion.md` sin el consentimiento explícito del usuario.
@@ -252,7 +262,7 @@ Texto completo que reemplaza **toda la sección 2** del template actual:
     *   **Si tu entorno ofrece UI interactiva nativa** (herramientas de questions, choices, formularios):
         *   Puedes usarla como alternativa al chat numerado para mejorar la experiencia.
         *   Pero el flujo y las preguntas deben venir del JSON de `plan questions`, no improvisadas.
-    *   **Pregunta opcional de assets**: Si `optionalPendingCount > 0`, pregunta si el usuario quiere proveer assets. Si dice que no, ejecuta `gsd-canva plan answer --id <ID> --field assets --value "Sin assets externos"` para marcarlo como respondido y reducir `optionalPendingCount` a 0.
+    *   **Pregunta recomendada de assets**: Si `optionalPendingCount > 0`, pregunta si el usuario quiere proveer assets. Es **recomendada** pero **no bloqueante** — el agente puede avanzar a confirmación con `optionalPendingCount > 0`. Si el usuario dice que no, simplemente se omite. No se guarda valor placeholder.
     *   **Guardado de respuestas**:
         *   Por cada respuesta del usuario, ejecuta:
             ```bash
@@ -311,10 +321,13 @@ Esto aplica en las 3 funciones. El hash protege integridad de **todos** los camp
 Verificar con `rg "mockup:pending" templates/ docs/ README.md` y actualizar referencias obsoletas:
 - `templates/plan-templates/roadmap_progreso.md`: reemplazar `mockup:pending` por `mockup:questions_pending` si aparece
 - `README.md`: verificar que las descripciones de estado sean consistentes con la máquina de estados actual
+- `docs/implementation_plans/*`: declarar como históricos — no actualizar excepto si contienen instrucciones operativas activas
 
 ### 11. `templates/plan-templates/preguntas.md` — Agregar campo `assets`
 
 Si el template de `preguntas.md` solo refleja los 6 campos originales, agregar sección para `Assets / Recursos externos` como campo opcional, consistente con el séptimo campo de `decisions.json`.
+
+### 12. `tests/plan.test.js` — Tests unitarios de funciones
 
 - **Test questions vacío**: plan nuevo → `requiredPendingCount === 6`, `optionalPendingCount === 1`, `filledCount === 0`, primer campo tiene `id === "vertical"`.
 - **Test questions parcial**: llenar 2 campos requeridos con `plan answer` → `requiredPendingCount === 4`, campos llenos aparecen en `filled`.
@@ -332,17 +345,14 @@ Si el template de `preguntas.md` solo refleja los 6 campos originales, agregar s
 - **Test mockup stale bloquea submit**: resetear desde `ready_for_html` con mockup stale, confirmar + resolver de nuevo, ejecutar `submit-mockup` → falla porque `mockup.html` no existe (fue renombrado).
 - **Test helper compartido**: probar indirectamente — llenar un campo con placeholder conocido (ej: `"TBD"`), verificar que `questions()` lo reporta como pending Y que `confirmDecisions` falla con el campo en `missing`. No requiere exportar `getEmptyFields`.
 - **Test hash incluye assets**: modificar `assets` después de confirmar → `resolve-questions` falla con hash mismatch.
-- **Test assets omitido explícito**: `plan answer --field assets --value "Sin assets externos"` → `optionalPendingCount === 0`.
+- **Test assets omitido**: no responder assets → `optionalPendingCount` sigue en 1, pero `readyToConfirm === true` (no bloquea).
 
 ### Tests de contrato CLI (`child_process`)
 
 Agregar sección separada en `tests/plan.test.js` que ejecute los subcomandos reales via `child_process.execSync` en un workspace temporal limpio:
 
-- **CLI questions --json**: verificar stdout es JSON válido con `ok: true`, stderr vacío, exit code 0.
-- **CLI answer --json**: verificar stdout JSON con campo `requiredPendingCount`, stderr vacío.
-- **CLI answer campo inválido --json**: verificar stderr JSON con `code: "GSDC_INVALID_FIELD"`, exit code 22.
-- **CLI reset-confirmation --json desde ready_for_html**: verificar stdout JSON con nuevo estado `questions_pending`.
-- Cada test captura `planId` desde `plan create --json` en vez de hardcodear `001`.
+- Usar `process.execPath` con ruta absoluta a `bin/gsd-canva.js` como binario, **no** `gsd-canva` global. Ejemplo: `execSync(`${process.execPath} ${path.resolve(__dirname, '../bin/gsd-canva.js')} plan questions --id ${planId} --json`, { cwd: tempDir })`
+- Cada test captura `planId` desde `plan create --json` en vez de hardcodear.
 
 ---
 
@@ -357,14 +367,14 @@ Agregar sección separada en `tests/plan.test.js` que ejecute los subcomandos re
 
 ## Verificación
 
-1. `npm test` — todos los tests pasan (existentes + 15 nuevos).
+1. `npm test` — todos los tests pasan (existentes + tests nuevos listados en secciones 12 y 13).
 2. En workspace temporal limpio: capturar `planId` desde `gsd-canva plan create --name "test" --json`, luego `gsd-canva plan questions --id $planId --json` → retorna esquema con `requiredPendingCount: 6`, `optionalPendingCount: 1`.
 3. `gsd-canva plan answer --id $planId --field vertical --value "SaaS / Producto Digital"` → guarda correctamente, retorna `requiredPendingCount: 5`.
-4. `gsd-canva plan questions --id 001 --json` → `requiredPendingCount` disminuye en 1.
+4. `gsd-canva plan questions --id $planId --json` → `requiredPendingCount` disminuye en 1.
 5. Llenar los 6 campos requeridos → `requiredPendingCount === 0`, `optionalPendingCount === 1`.
-6. `gsd-canva plan confirm-decisions --id 001` → pasa (solo requiere los 6, no `assets`).
+6. `gsd-canva plan confirm-decisions --id $planId` → pasa (solo requiere los 6, no `assets`).
 7. Intentar `plan answer` después de confirmar → error `GSDC_DECISIONS_LOCKED` (exit 23).
-8. `gsd-canva plan reset-confirmation --id 001` → desbloquea, `plan answer` funciona de nuevo.
+8. `gsd-canva plan reset-confirmation --id $planId` → desbloquea, `plan answer` funciona de nuevo.
 9. Intentar `plan questions` en plan con estado `mockup:ready_for_html` → error `GSDC_INVALID_STATE` (exit 13).
 10. Confirmar + resolver (estado `ready_for_html`), ejecutar `reset-confirmation` → estado vuelve a `questions_pending`, `plan answer` funciona.
 11. Verificar que `canva-mockup.md` sección 2 ya no contiene instrucciones de escritura directa en `decisions.json`:
@@ -380,7 +390,7 @@ Agregar sección separada en `tests/plan.test.js` que ejecute los subcomandos re
 ## Notas
 
 - Los `value` en el JSON son siempre texto final legible — lo que el usuario selecciona es lo que se guarda en `decisions.json`. No hay códigos internos.
-- `assets` es opcional: no bloquea el Yield Gate pero se almacena si el usuario lo provee. `requiredPendingCount` y `optionalPendingCount` están separados para que el agente sepa cuándo puede avanzar.
+- `assets` es opcional: no bloquea el Yield Gate. `readyToConfirm` es `true` cuando los 6 campos requeridos están llenos, independientemente de `assets`. El agente puede avanzar a confirmación con `optionalPendingCount > 0`.
 - El fallback a chat numerado es first-class, no un afterthought. La UI nativa es opcional.
 - `plan answer` escribe atómicamente y valida campo + estado + confirmación bloqueada — el agente nunca toca `decisions.json` directamente.
 - La parada de revisión final es obligatoria antes de `confirm-decisions`: el usuario debe ver un resumen y confirmar explícitamente.
@@ -393,9 +403,10 @@ Agregar sección separada en `tests/plan.test.js` que ejecute los subcomandos re
 - La sección 2 completa del template se reemplaza, no solo el roadblock — elimina todas las instrucciones de escritura directa en `decisions.json`. La sección 3 (wireframing) no se toca — se ejecuta después del yield gate.
 - `answer()` y `resetConfirmation()` adquieren lock global **antes** de leer y validar — protege contra race conditions con comandos concurrentes.
 - `assets` se incluye en el payload del hash criptográfico — cambios en assets post-confirmación son detectados.
-- Si el usuario omite assets, se guarda `"Sin assets externos"` para que `optionalPendingCount` llegue a 0 y el agente no siga preguntando.
+- Si el usuario omite assets, simplemente se omite — no se guarda placeholder. `assets` queda vacío en `decisions.json` y `optionalPendingCount` permanece > 0, pero eso no bloquea el avance.
 - `reset-confirmation` desde `ready_for_html` renombra `mockup.html` a `.stale` para invalidarlo — evita submit de HTML generado con decisiones viejas.
-- Tests de contrato CLI via `child_process` validan stdout/stderr/exit code reales de los subcomandos.
+- Tests CLI via `child_process` usan `process.execPath` + ruta a `bin/gsd-canva.js` — no requieren instalación global.
+- `readJsonOrThrow()` helper centraliza parsing de JSON con error consistente.
 - `getEmptyFields` se prueba indirectamente, no se exporta — `questions()` y `confirmDecisions()` son la API pública.
 - Verificación captura `planId` dinámicamente desde `plan create --json` en workspace temporal limpio.
 - Referencias a `mockup:pending` en `roadmap_progreso.md` y `README.md` se verifican y actualizan.
