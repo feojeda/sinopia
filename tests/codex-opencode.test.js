@@ -36,6 +36,7 @@ async function run() {
     assert.strictEqual(codexResult.initialized, true);
     assert.strictEqual(codexResult.agentsInstalled.codex.count, 4);
     assert.strictEqual(codexResult.agentsInstalled.codex.target, '.codex/commands');
+    assert.strictEqual(codexResult.agentSkillsInstalled, undefined, 'No antigravity compat fields for codex-only');
 
     const expectedCommands = ['canva-mockup', 'canva-draft', 'canva-refine', 'canva-deliver'];
     for (const cmdId of expectedCommands) {
@@ -92,6 +93,9 @@ async function run() {
     assert.strictEqual(allResult.agentsInstalled.codex.count, 4);
     assert.strictEqual(allResult.agentsInstalled.opencode.count, 4);
 
+    assert.strictEqual(allResult.agentSkillsInstalled, 4, 'Phase 2 backward compat for --agent all');
+    assert.strictEqual(allResult.agentTarget, '.agents/skills', 'Phase 2 backward compat for --agent all');
+
     for (const cmdId of expectedCommands) {
       assert.ok(
         fs.existsSync(path.join(allDir, '.agents/skills', cmdId, 'SKILL.md')),
@@ -111,7 +115,7 @@ async function run() {
     const manifest = JSON.parse(
       fs.readFileSync(path.join(allDir, '.gsd-canva/manifest.json'), 'utf8')
     );
-    assert.strictEqual(manifest.schemaVersion, 2);
+    assert.strictEqual(manifest.schemaVersion, 1, 'Manifest stays at schema v1 (Phase 4 owns v2 bump)');
     assert.ok(manifest.agents.antigravity);
     assert.ok(manifest.agents.codex);
     assert.ok(manifest.agents.opencode);

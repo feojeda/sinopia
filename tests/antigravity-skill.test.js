@@ -37,6 +37,8 @@ async function run() {
     assert.strictEqual(initResult.initialized, true);
     assert.strictEqual(initResult.agentsInstalled.antigravity.count, 4, 'Should install 4 skills');
     assert.strictEqual(initResult.agentsInstalled.antigravity.target, '.agents/skills');
+    assert.strictEqual(initResult.agentSkillsInstalled, 4, 'Phase 2 backward compat: agentSkillsInstalled');
+    assert.strictEqual(initResult.agentTarget, '.agents/skills', 'Phase 2 backward compat: agentTarget');
 
     const expectedSkills = ['canva-mockup', 'canva-draft', 'canva-refine', 'canva-deliver'];
     for (const skillId of expectedSkills) {
@@ -88,7 +90,7 @@ async function run() {
     const manifest = JSON.parse(
       fs.readFileSync(path.join(tempProjectDir, '.gsd-canva/manifest.json'), 'utf8')
     );
-    assert.strictEqual(manifest.schemaVersion, 2, 'Manifest should be schema v2');
+    assert.strictEqual(manifest.schemaVersion, 1, 'Manifest should remain schema v1 (Phase 4 owns v2 bump)');
     assert.ok(manifest.agents, 'Manifest should have agents section');
     assert.ok(manifest.agents.antigravity, 'Manifest should have antigravity agent');
     const skillEntries = manifest.agents.antigravity.files;
@@ -248,6 +250,7 @@ async function run() {
       frameworkVersion: '1.3.0'
     });
     assert.strictEqual(forceResult.agentsInstalled.antigravity.count, 4);
+    assert.strictEqual(forceResult.agentSkillsInstalled, 4, 'Phase 2 backward compat after force-all');
     const restoredContent = fs.readFileSync(existingSkillPath, 'utf8');
     assert.ok(!restoredContent.includes('USER MODIFIED'), 'Force-all should overwrite modified skill');
 
@@ -270,6 +273,7 @@ async function run() {
     });
     assert.strictEqual(adoptResult.initialized, true);
     assert.strictEqual(adoptResult.agentsInstalled.antigravity.count, 4);
+    assert.strictEqual(adoptResult.agentSkillsInstalled, 4, 'Phase 2 backward compat after adopt');
 
     const preserved = fs.readFileSync(
       path.join(adoptDir, '.agents/skills/canva-mockup/SKILL.md'),
