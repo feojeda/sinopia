@@ -28,7 +28,7 @@ async function run() {
     const initResult = await installer.init({ frameworkVersion: '1.0.0' });
     
     assert.strictEqual(initResult.initialized, true, 'Debería inicializar exitosamente');
-    assert.strictEqual(initResult.schemaVersion, 1, 'schemaVersion should remain 1 (Phase 4 owns v2 bump)');
+    assert.strictEqual(initResult.schemaVersion, 2, 'schemaVersion should be 2 (Phase 4 manifest v2)');
     
     assert.ok(fs.existsSync('.gsd-canva'), 'Debería existir la carpeta .gsd-canva');
     assert.ok(fs.existsSync('.gsd-canva/manifest.json'), 'Debería existir manifest.json');

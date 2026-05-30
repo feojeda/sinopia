@@ -3,7 +3,7 @@ const fs = require('fs');
 
 async function runAll() {
   console.log('\n==================================================');
-  console.log('🧪 INICIANDO SUITE DE PRUEBAS DE GSD-CANVA (FASE 3)');
+  console.log('🧪 INICIANDO SUITE DE PRUEBAS DE GSD-CANVA (FASE 4)');
   console.log('==================================================\n');
 
   // Limpiar directorio temporal antes de empezar
@@ -65,6 +65,17 @@ async function runAll() {
     console.log('🟢 Pruebas de Codex/OpenCode Adapters completadas con éxito.\n');
   } catch (err) {
     console.error('🔴 FAILED: Pruebas de Codex/OpenCode Adapters fallaron.');
+    console.error(err);
+    failed = true;
+  }
+
+  try {
+    console.log('--- 6. Pruebas de Manifest v2, Upgrade, Adopt, Force-All (Phase 4) ---');
+    const p4Tests = require('./manifest-upgrade-adopt.test');
+    await p4Tests.run();
+    console.log('🟢 Pruebas de Phase 4 (Manifest v2, Upgrade, Adopt) completadas con éxito.\n');
+  } catch (err) {
+    console.error('🔴 FAILED: Pruebas de Phase 4 (Manifest v2, Upgrade, Adopt) fallaron.');
     console.error(err);
     failed = true;
   }

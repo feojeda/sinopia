@@ -115,7 +115,7 @@ async function run() {
     const manifest = JSON.parse(
       fs.readFileSync(path.join(allDir, '.gsd-canva/manifest.json'), 'utf8')
     );
-    assert.strictEqual(manifest.schemaVersion, 1, 'Manifest stays at schema v1 (Phase 4 owns v2 bump)');
+    assert.strictEqual(manifest.schemaVersion, 2, 'Manifest should be schema v2 (Phase 4 manifest v2)');
     assert.ok(manifest.agents.antigravity);
     assert.ok(manifest.agents.codex);
     assert.ok(manifest.agents.opencode);

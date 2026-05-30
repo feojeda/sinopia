@@ -90,7 +90,7 @@ async function run() {
     const manifest = JSON.parse(
       fs.readFileSync(path.join(tempProjectDir, '.gsd-canva/manifest.json'), 'utf8')
     );
-    assert.strictEqual(manifest.schemaVersion, 1, 'Manifest should remain schema v1 (Phase 4 owns v2 bump)');
+    assert.strictEqual(manifest.schemaVersion, 2, 'Manifest should be schema v2 (Phase 4 manifest v2)');
     assert.ok(manifest.agents, 'Manifest should have agents section');
     assert.ok(manifest.agents.antigravity, 'Manifest should have antigravity agent');
     const skillEntries = manifest.agents.antigravity.files;
