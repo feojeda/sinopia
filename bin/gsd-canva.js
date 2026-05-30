@@ -82,6 +82,7 @@ program
   .description('Inicializa el framework GSD Canva en el espacio de trabajo local')
   .option('--force-all', 'Fuerza la reinstalación y sobrescritura de archivos del framework y comandos controlados')
   .option('--adopt', 'Adopta archivos locales conocidos si no existe el manifiesto de control')
+  .option('--agent <nombre>', 'Instala capabilities como skills del agente (ej: antigravity)')
   .option('--json', 'Salida estructurada en JSON puro para integraciones de agentes')
   .action(async (options) => {
     try {
@@ -89,6 +90,7 @@ program
       const result = await installer.init({
         forceAll: !!options.forceAll,
         adopt: !!options.adopt,
+        agent: options.agent || null,
         json: !!options.json,
         frameworkVersion
       });
@@ -107,7 +109,17 @@ ${chalk.blue('└── system_templates.json')}    ${chalk.gray('<-- Catálogo 
 
 ${chalk.green('✔ Archivos de configuración listos.')}
 ${chalk.green('✔ Reglas agregadas a .gitignore de forma segura e idempotente.')}
+`;
+        if (options.agent === 'antigravity' && result.agentSkillsInstalled) {
+          humanMsg += `
+${chalk.magenta('🤖 Antigravity 2.0 Skills instalados:')}
+${chalk.blue('├── .agents/skills/')}          ${chalk.gray('<-- Skills en formato Antigravity 2.0')}
+${chalk.green('✔ ' + result.agentSkillsInstalled + ' skills instalados en .agents/skills/<id>/SKILL.md')}
+${chalk.gray('  Compatibilidad legacy: .antigravity/commands/ preservado')}
+`;
+        }
 
+        humanMsg += `
 ${chalk.yellow('Próximos pasos recomendados para tu agente de IA:')}
 1. Usa ${chalk.bold('/canva-mockup <nombre>')} para inicializar el plan 001 y crear tu primera propuesta visual.
 2. Ejecuta ${chalk.bold('gsd-canva doctor')} para verificar la salud y compatibilidad del entorno.
@@ -183,6 +195,16 @@ program
         humanMsg += `  - Catálogo de Plantillas: ${chalk.green('VÁLIDO')}\n`;
         if (options.agent) {
           humanMsg += `  - Validación de Prompts para ${chalk.cyan(options.agent)}: ${chalk.green('OK')}\n`;
+          if (result.agentDetails) {
+            if (result.agentDetails.legacyCommands) {
+              humanMsg += `  - Legacy Commands (.antigravity/commands/): ${chalk.green('OK')}\n`;
+            }
+            if (result.agentDetails.skillsDir) {
+              humanMsg += `  - Antigravity 2.0 Skills (.agents/skills/): ${chalk.green(result.agentDetails.validSkills + '/' + result.agentDetails.skillsCount + ' válidos')}\n`;
+            } else {
+              humanMsg += `  - Antigravity 2.0 Skills: ${chalk.yellow('No instalados (use --agent antigravity en init)')}\n`;
+            }
+          }
         }
       }
       handleSuccess(result, humanMsg);

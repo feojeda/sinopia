@@ -3,7 +3,7 @@ const fs = require('fs');
 
 async function runAll() {
   console.log('\n==================================================');
-  console.log('🧪 INICIANDO SUITE DE PRUEBAS DE GSD-CANVA (FASE 1)');
+  console.log('🧪 INICIANDO SUITE DE PRUEBAS DE GSD-CANVA (FASE 2)');
   console.log('==================================================\n');
 
   // Limpiar directorio temporal antes de empezar
@@ -43,6 +43,17 @@ async function runAll() {
     console.log('🟢 Pruebas de Agent Adapters completadas con éxito.\n');
   } catch (err) {
     console.error('🔴 FAILED: Pruebas de Agent Adapters fallaron.');
+    console.error(err);
+    failed = true;
+  }
+
+  try {
+    console.log('--- 4. Pruebas de Antigravity 2.0 Skills ---');
+    const skillTests = require('./antigravity-skill.test');
+    await skillTests.run();
+    console.log('🟢 Pruebas de Antigravity 2.0 Skills completadas con éxito.\n');
+  } catch (err) {
+    console.error('🔴 FAILED: Pruebas de Antigravity 2.0 Skills fallaron.');
     console.error(err);
     failed = true;
   }
