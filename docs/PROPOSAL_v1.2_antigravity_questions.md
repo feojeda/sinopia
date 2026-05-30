@@ -1,4 +1,4 @@
-# Plan: Preguntas Interactivas en `/canva-mockup` — Antigravity Edition (Rev. 17)
+# Plan: Preguntas Interactivas en `/canva-mockup` — Antigravity Edition (Rev. 18)
 
 **Based on**: Rev. 15 (`PROPOSAL_v1.2_interactive_questions.md`)
 **Fecha**: 2026-05-30
@@ -346,7 +346,7 @@ Comportamiento:
   6. Renombrar `mockup.html` a `.stale` si existe. **Si rename falla** (I/O error): no throw — incluir `staleRenameFailed: true` en return. Documentar cleanup manual.
   7. Release lock en `finally`
 - **Si `staleRenameFailed: true`**: Template debe informar: "El mockup anterior no se pudo renombrar pero los datos se reiniciaron. El archivo mockup.html anterior puede ser ignorado o eliminado manualmente."
-- **Guard contra stale mockup reuso**: `submitMockup()` verifica que `mockup.html` mtime sea posterior a `confirmedAt`. Si predates → `GSDC_STALE_MOCKUP` (exit 27) — **blocking error**, no warning. El agente debe informar que el mockup es stale y sugerir re-generarlo. `resetConfirmation()` persiste `staleMockupExists: true` en `decisions.json` cuando rename falla — `submitMockup()` también rechaza si esta flag está presente.
+- **Guard contra stale mockup reuso**: `submitMockup()` verifica que `mockup.html` mtime sea posterior a `confirmedAt`. Si predates → `GSDC_STALE_MOCKUP` (exit 27) — **blocking error**, no warning. El agente debe informar que el mockup es stale y sugerir re-generarlo. Si rename falló en reset previo y el viejo `mockup.html` persiste, el mtime guard lo atrapa (mtime del archivo viejo predates el nuevo `confirmedAt`). **No se usa flag persistido** — el mtime check es suficiente y no puede deadlocking.
 - **Recuperación**: Si falla después de paso 4, estado es `questions_pending` en plan.json pero `confirmed=true` en decisions.json → `answer()` falla con `GSDC_DECISIONS_LOCKED` (diagnósable). Re-ejecutar `resetConfirmation()` re-ejecuta todos los pasos idempotentemente. History puede acumular un entry extra en crash recovery — aceptable. Si falla después de paso 5, re-ejecutar ve mockupExists → procede con rename. Plan.json se escribe primero para que crash deje un estado donde `resetConfirmation()` puede continuar.
 - Retorna confirmación + nuevo estado + si mockup fue staled + `staleRenameFailed: true` si rename falló
 
@@ -563,13 +563,13 @@ function computeDecisionsHash(decisions, hashAlgorithm) {
 | 5 | Plan confirmado → reset | `""` | `false` | `hashAlgorithm` limpiado. `confirmDecisions()` computa v2 de nuevo. |
 | 6 | Plan confirmado v2 | `"sha256-decisions-v2"` | `true` | `resolveQuestions()` usa 7 campos. Normal flow. | Antes de computar hash, ejecuta `getEmptyFields(decisions, REQUIRED_FIELDS)`. Si hay campos vacíos o placeholder → `GSDC_QUESTIONS_UNRESOLVED` (exit 19). Protección a nivel API — no depende solo del template.
 
-**`confirmDecisions()` operation ordering**: acquire lock → leer `plan.json` + `decisions.json` → `readJsonOrThrow` → validar estado → `ensureV2Fields()` → `getEmptyFields(REQUIRED_FIELDS)` → exit 19 si hay pendientes → computar hash v2 → escribir `decisions.json` atómicamente → release lock en `finally`.
+**`confirmDecisions()` operation ordering**: acquire lock → leer `plan.json` + `decisions.json` → `readJsonOrThrow` → validar estado → `ensureV2Fields()` → **re-confirmation guard** (si `confirmed === true` y hash existe: si hash matches → success idempotent; si values cambiaron → exit 23) → `getEmptyFields(REQUIRED_FIELDS)` → exit 19 si hay pendientes → computar hash v2 → **check optional coverage**: si algún campo en `OPTIONAL_FIELDS` tiene `optionalAnswered[field] !== true` → incluir `warning: "optional_fields_not_addressed"` en response (advisory, no blocking) → escribir `decisions.json` atómicamente → release lock en `finally`.
 
 **`resolveQuestions()` operation ordering**: acquire lock → leer `plan.json` + `decisions.json` → `readJsonOrThrow` → validar estado → `ensureV2Fields()` → validar `confirmed === true` → dispatch hash (v1: 6 campos, v2: 7 campos) → verificar match → transicionar estado → escribir archivos atómicamente → release lock en `finally`.
 
 **`submitMockup()` operation ordering**: acquire lock → leer `plan.json` + `decisions.json` → `readJsonOrThrow` → validar estado → `ensureV2Fields()` → dispatch hash → verificar match → verificar mockup.html existe → transicionar estado → escribir archivos atómicamente → release lock en `finally`.
 
-**`resolveQuestions()` y `submitMockup()`**: Leen `confirmation.hashAlgorithm` y usan dispatch. Si es `sha256-decisions-v1`, usan 6 campos + normalize vieja. Cualquier otro caso (v2, vacío, undefined) → 7 campos. **`resolveQuestions()` usa `getEmptyFields(decisions, REQUIRED_FIELDS)`** para validación de placeholders — no inline `includes()`. Post-impl: `rg "includes\(p\)" lib/plan-manager.js` retorna 0 hits.
+**`resolveQuestions()` y `submitMockup()`**: Leen `confirmation.hashAlgorithm` y usan dispatch. Si es `sha256-decisions-v1`, usan 6 campos + normalize vieja. Si es `sha256-decisions-v2`, vacío, o undefined → 7 campos. **Forward compatibility guard**: si `hashAlgorithm` empieza con `"sha256-decisions-"` pero no es ni v1 ni v2 → throw con `GSDC_INVALID_STATE` (exit 13) y `reason: "unknown_hash_version"`, mensaje: "Versión de hash no soportada: <value>. Use reset-confirmation y confirme de nuevo." Esto previene hash mismatch silencioso con versiones futuras. **`resolveQuestions()` usa `getEmptyFields(decisions, REQUIRED_FIELDS)`** para validación de placeholders — no inline `includes()`. Post-impl: `rg "includes\(p\)" lib/plan-manager.js` retorna 0 hits.
 
 ### 9. Referencias cruzadas
 
@@ -639,7 +639,10 @@ Buscar `mockup:pending` en templates/docs/README — verificar que reflejan la s
 - v2 plan nuevo → `hashAlgorithm === "sha256-decisions-v2"`.
 - `confirmDecisions()` siempre computa v2: v1 plan → confirm → label v2 + hash v2 (7 campos) → resolve pasa.
 - `confirmDecisions()` rechaza empty required: 5/6 llenos + 1 empty (warning) → exit 19 `GSDC_QUESTIONS_UNRESOLVED`.
+- `confirmDecisions()` warning optional: 6/6 required llenos, assets sin responder → success con `warning: "optional_fields_not_addressed"`. Assets respondido (decline) → success sin warning.
+- `confirmDecisions()` re-confirmation guard: confirm → confirm de nuevo sin cambios → success idempotent (mismo hash). Confirm → answer cambia campo → confirm de nuevo → exit 23 `GSDC_DECISIONS_LOCKED`.
 - `hashAlgorithm = ""` → confirm usa v2 (fallback).
+- `hashAlgorithm = "sha256-decisions-v99"` → resolve/submit throw exit 13 con `reason: "unknown_hash_version"`.
 - Assets modificado post-confirm → mismatch.
 - v1 fixture con uppercase (`vertical: "Moda"`) → resolve pasa (normalize NFC preserva case).
 
@@ -719,7 +722,7 @@ Nota: `GSDC_MOCKUP_MISSING` (20) renombra `GSDC_ARTIFACT_MISSING` para mockup.ht
 - Template transición: requiredFieldsComplete → preguntar assets → confirmar. No salta opcionales.
 - Template multi-campo: mapeo semántico, no posicional. No guardar si incierto.
 - Template matching: substring case-insensitive de exactamente 1 opción → confirmar. Múltiples/ninguna → lista completa.
-- "confirmo" parsing: word-boundary regex `/\b(confirmo|confirmado)\b/i` con negation check anclado (`/\bno\s+(lo\s+)?(confirmo|confirmado)\b/i` → rechazar). Solo detecta negación directa del verbo. **Trade-off aceptado**: "confirmo pero quiero cambiar" pasa — reset-confirmation disponible.
+- "confirmo" parsing: word-boundary regex `/\b(confirmo|confirmado)\b/i` con negation check anclado (`/\bno\s+(lo\s+)?(confirmo|confirmado)\b/i` → rechazar). Solo detecta negación directa del verbo. **Nota semántica**: el parsing detecta la presencia de la palabra "confirmo/confirmado", no analiza semántica del contexto. Expresiones como "claro que no, confirmo" son afirmaciones en español ("no" niega cláusula implícita, no la confirmación). **Trade-offs aceptados**: (1) "confirmo pero quiero cambiar" pasa — reset-confirmation disponible. (2) "confirmo que no" pasa — mismo trade-off. Para deshacer una confirmación, usar reset-confirmation.
 - `answer()` valida choice values: rechaza numéricos puros (`reason: "numeric_value"`), placeholders (`reason: "placeholder_value"`), valores fuera de opciones (`reason: "not_in_options"`).
 - `GSDC_MOCKUP_MISSING` (20) reemplaza `GSDC_ARTIFACT_MISSING` para mockup — sin colisión.
 - CLI handleError fallback → `err.exitCode || 1`.
