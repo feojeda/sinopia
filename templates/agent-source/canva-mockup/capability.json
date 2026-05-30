@@ -1,0 +1,9 @@
+{
+  "id": "canva-mockup",
+  "title": "Canva Mockup",
+  "invocation": "/canva-mockup <nombre_diseño>",
+  "description": "Create the mockup phase using the gsd-canva lifecycle.",
+  "triggers": ["/canva-mockup"],
+  "category": "gsd-canva",
+  "supportedAgents": ["antigravity", "codex", "opencode"]
+}

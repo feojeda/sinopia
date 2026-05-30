@@ -1,0 +1,9 @@
+{
+  "id": "canva-refine",
+  "title": "Canva Refine",
+  "invocation": "/canva-refine [ID]",
+  "description": "Perform deterministic pixel-perfect refinement on a Canva design.",
+  "triggers": ["/canva-refine"],
+  "category": "gsd-canva",
+  "supportedAgents": ["antigravity", "codex", "opencode"]
+}

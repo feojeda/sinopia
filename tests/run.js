@@ -36,6 +36,17 @@ async function runAll() {
     failed = true;
   }
 
+  try {
+    console.log('--- 3. Pruebas de Agent Adapters y Renderers ---');
+    const adapterTests = require('./adapter.test');
+    await adapterTests.run();
+    console.log('🟢 Pruebas de Agent Adapters completadas con éxito.\n');
+  } catch (err) {
+    console.error('🔴 FAILED: Pruebas de Agent Adapters fallaron.');
+    console.error(err);
+    failed = true;
+  }
+
   // Limpieza final
   if (fs.existsSync(tempDir)) {
     fs.rmSync(tempDir, { recursive: true, force: true });
