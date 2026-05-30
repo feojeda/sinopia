@@ -3,6 +3,7 @@
 const { Command } = require('commander');
 const path = require('path');
 const fs = require('fs');
+const agentAdapters = require('../lib/agent-adapters');
 
 // Intentar leer package.json de forma relativa a la instalación del paquete
 let pkg = { version: '1.0.0' };
@@ -110,7 +111,27 @@ ${chalk.blue('└── system_templates.json')}    ${chalk.gray('<-- Catálogo 
 ${chalk.green('✔ Archivos de configuración listos.')}
 ${chalk.green('✔ Reglas agregadas a .gitignore de forma segura e idempotente.')}
 `;
-        if (options.agent === 'antigravity' && result.agentSkillsInstalled) {
+        if (options.agent && result.agentsInstalled) {
+          for (const [agentId, info] of Object.entries(result.agentsInstalled)) {
+            const agentLabels = {
+              antigravity: 'Antigravity 2.0 Skills',
+              codex: 'Codex Commands',
+              opencode: 'OpenCode Commands (experimental)'
+            };
+            const label = agentLabels[agentId] || agentId;
+            humanMsg += `
+${chalk.magenta('🤖 ' + label + ' instalados:')}
+${chalk.blue('├── ' + info.target + '/')}          ${chalk.gray('<-- ' + label)}
+${chalk.green('✔ ' + info.count + ' artifacts instalados')}
+`;
+            if (agentId === 'opencode') {
+              humanMsg += `${chalk.yellow('  ⚠ OpenCode adapter is experimental — format not yet verified against official docs.')}\n`;
+            }
+          }
+          if (options.agent === 'all' || (options.agent !== 'antigravity' && result.agentsInstalled.antigravity)) {
+            humanMsg += `${chalk.gray('  Compatibilidad legacy: .antigravity/commands/ preservado')}\n`;
+          }
+        } else if (options.agent === 'antigravity' && result.agentSkillsInstalled) {
           humanMsg += `
 ${chalk.magenta('🤖 Antigravity 2.0 Skills instalados:')}
 ${chalk.blue('├── .agents/skills/')}          ${chalk.gray('<-- Skills en formato Antigravity 2.0')}
@@ -195,7 +216,18 @@ program
         humanMsg += `  - Catálogo de Plantillas: ${chalk.green('VÁLIDO')}\n`;
         if (options.agent) {
           humanMsg += `  - Validación de Prompts para ${chalk.cyan(options.agent)}: ${chalk.green('OK')}\n`;
-          if (result.agentDetails) {
+          if (result.agentDetails && result.agentDetails.agents) {
+            for (const [agentId, details] of Object.entries(result.agentDetails.agents)) {
+              const adapter = agentAdapters.getAdapter(agentId);
+              const label = agentId === 'antigravity' ? 'Antigravity 2.0 Skills'
+                : agentId === 'codex' ? 'Codex Commands'
+                : 'OpenCode Commands';
+              humanMsg += `  - ${label} (${adapter.targetRoot}/): ${chalk.green(details.validCount + '/' + details.expectedCount + ' válidos')}\n`;
+              if (details.experimental) {
+                humanMsg += `    ${chalk.yellow('⚠ experimental — format not yet verified')}\n`;
+              }
+            }
+          } else if (result.agentDetails) {
             if (result.agentDetails.legacyCommands) {
               humanMsg += `  - Legacy Commands (.antigravity/commands/): ${chalk.green('OK')}\n`;
             }

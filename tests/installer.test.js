@@ -28,7 +28,7 @@ async function run() {
     const initResult = await installer.init({ frameworkVersion: '1.0.0' });
     
     assert.strictEqual(initResult.initialized, true, 'Debería inicializar exitosamente');
-    assert.strictEqual(initResult.schemaVersion, 1, 'schemaVersion debería ser 1');
+    assert.strictEqual(initResult.schemaVersion, 1, 'schemaVersion should remain 1 (Phase 4 owns v2 bump)');
     
     assert.ok(fs.existsSync('.gsd-canva'), 'Debería existir la carpeta .gsd-canva');
     assert.ok(fs.existsSync('.gsd-canva/manifest.json'), 'Debería existir manifest.json');
@@ -99,6 +99,14 @@ async function run() {
     } catch (err) {
       assert.strictEqual(err.code, 'GSDC_AGENT_SKILLS_MISSING', 'Debería retornar GSDC_AGENT_SKILLS_MISSING');
       assert.strictEqual(err.exitCode, 19, 'Exit code de skills faltantes debe ser 19');
+    }
+    
+    try {
+      await installer.doctor({ agent: 'agente-inexistente' });
+      assert.fail('Doctor debería fallar ante agente no soportado');
+    } catch (err) {
+      assert.strictEqual(err.code, 'GSDC_AGENT_UNSUPPORTED', 'Debería retornar GSDC_AGENT_UNSUPPORTED');
+      assert.strictEqual(err.exitCode, 17, 'Exit code de agente no soportado debe ser 17');
     }
     
     try {
