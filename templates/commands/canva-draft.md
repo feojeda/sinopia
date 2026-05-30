@@ -6,17 +6,25 @@ Este comando inicializa la **Fase 1: Creación de Borradores y Registro de Plant
 
 ## Instrucciones Operativas para el Agente
 
-Cuando el usuario invoque este comando, debes ejecutar de forma obligatoria los siguientes pasos secuenciales utilizando el motor del CLI local de Node:
+Cuando el usuario invoque este comando, debes ejecutar de forma obligatoria los siguientes pasos secuenciales utilizando el CLI global del framework:
+
+### 0. Preflight del Entorno (OBLIGATORIO)
+*   Antes de ejecutar cualquier otra acción, verifica que el CLI global de `gsd-canva` esté disponible en tu `PATH`:
+    ```bash
+    gsd-canva --help
+    ```
+    *(Alternativamente, puedes verificar con `command -v gsd-canva`)*.
+*   ⚠️ **PARADA CRÍTICA**: Si el comando falla o no es encontrado, **detén tu ejecución inmediatamente**. Informa al usuario que el CLI global no está configurado o enlazado en su sistema y solicita que ejecute `npm install -g .` o `npm link` en el directorio raíz del framework antes de volver a intentar. **PROHIBIDO** instalar paquetes o buscar dependencias locales por tu cuenta.
 
 1. **Validación del ID**:
    * Si el usuario no proporciona un ID (ej: `/canva-draft` a secas), ejecuta:
      ```bash
-     node .gsd-canva/bin/gsd-canva.js plan list --phase mockup --json
+     gsd-canva plan list --phase mockup --json
      ```
    * Presenta al usuario la lista de planes en fase `mockup` aprobada, solicita interactivamente cuál desea procesar y **detén la ejecución hasta que defina el ID**.
    * Una vez definido el ID (ej: `001`), ejecuta la transición de estado:
      ```bash
-     node .gsd-canva/bin/gsd-canva.js plan start-draft --id <ID_DE_TRES_DÍGITOS>
+     gsd-canva plan start-draft --id <ID_DE_TRES_DÍGITOS>
      ```
 
 2. **Creación de Borradores en Canva (MCP)**:
@@ -42,10 +50,10 @@ Cuando el usuario invoque este comando, debes ejecutar de forma obligatoria los 
      * Llama a `canva/get-design-content` para mapear los elementos del diseño. Extrae los IDs únicos (`elementId`) de las cajas de texto y placeholders de imágenes.
      * Ejecuta el comando de registro en el catálogo del sistema:
        ```bash
-       node .gsd-canva/bin/gsd-canva.js template register --id <CANVA_DESIGN_ID> --name "<Nombre_Plantilla_Sistema>" --plan <ID_DE_TRES_DÍGITOS>
+       gsd-canva template register --id <CANVA_DESIGN_ID> --name "<Nombre_Plantilla_Sistema>" --plan <ID_DE_TRES_DÍGITOS>
        ```
      * Ejecuta la transición para aprobar la fase de borrador en el plan local:
        ```bash
-       node .gsd-canva/bin/gsd-canva.js plan approve-draft --id <ID_DE_TRES_DÍGITOS>
+       gsd-canva plan approve-draft --id <ID_DE_TRES_DÍGITOS>
        ```
      * Esto dejará el plan listo para la fase de refinamiento determinista (`draft:approved` -> listo para `/canva-refine`).

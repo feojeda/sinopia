@@ -1,5 +1,7 @@
 # Plan de Alineación Arquitectónica: CLI Global y Espacio de Trabajo Limpio (Rev. 17)
 
+> **⚠️ SUPERSEDED**: Este plan ha sido reemplazado por la propuesta integrada `docs/PROPOSAL_v1.1_architectural_fixes.md` (Rev. 5), que consolida y extiende todos los cambios aquí descritos. Este archivo se conserva únicamente para trazabilidad histórica.
+
 Este plan de alineación resuelve la discrepancia de diseño señalada por tu segundo agente, retornando a una **arquitectura de CLI global y limpia** que evita la duplicación de runtime y la necesidad de instalar dependencias como `commander` o `chalk` en las carpetas destino de tus campañas.
 
 ---

@@ -1,29 +1,32 @@
-# Plan de Implementación Consolidado - GSD Canva (Arquitectura Puramente Local - Rev. 11 Definitiva)
+# Plan de Implementación Consolidado - GSD Canva (Arquitectura CLI Global - Rev. 12)
 
 `gsd-canva` es un framework de desarrollo basado en especificaciones (Spec-Driven Development) de grado empresarial diseñado para guiar y estructurar el ciclo de vida de creación de elementos de Canva en dos fases:
 *   **Fase 1: Prototipado e Iteración Visual**
 *   **Fase 2: Ajuste Fino Determinista (Pixel-Perfect con MCP)**
 
-Este documento representa la especificación de arquitectura definitiva, absoluta y congelada para la Fase 1. Se enfoca en una **filosofía de espacio de trabajo 100% autocontenido (self-contained workspace)**, eliminando cualquier binario global en el sistema operativo y haciendo que todo el runtime del framework viva de forma aislada dentro de cada proyecto destino.
+Este documento representa la especificación de arquitectura definitiva, absoluta y congelada para la Fase 1. Se enfoca en una **arquitectura de CLI global (`npm install -g` o `npm link`)**, donde todas las operaciones se ejecutan a través del binario global `gsd-canva` sin copiar runtime al proyecto destino.
 
 ---
 
 ## Precisiones Arquitectónicas Definitivas (Congeladas)
 
-### 1. Arquitectura de Runtime Autocontenido (Self-Contained Runtime)
-Para evitar la instalación de binarios o scripts a nivel de sistema global (lo que puede contaminar el sistema operativo o generar dependencias incompatibles entre proyectos), **toda la lógica y el runtime de `gsd-canva` se copiarán dentro de la carpeta del proyecto destino**:
-*   El framework de desarrollo (`/Users/franciscoojeda/gsd-canva`) actuará como el **generador/andamio (scaffolder)**.
-*   Al inicializar un proyecto destino (usando `node /Users/franciscoojeda/gsd-canva/bin/gsd-canva.js init`), el instalador copiará de forma recursiva tanto las plantillas como el **código de ejecución** en el destino:
-    *   `.gsd-canva/bin/gsd-canva.js` (La CLI de enrutamiento local).
-    *   `.gsd-canva/lib/` (Los módulos `installer.js`, `lock-manager.js`, `plan-manager.js` y `template-catalog.js`).
-*   **Ejecución Local**: Todas las operaciones subsecuentes del agente y del usuario se ejecutarán directamente usando Node de forma local dentro del proyecto, sin requerir variables en `$PATH`:
+### 1. Arquitectura de CLI Global (Global CLI Architecture)
+El framework se instala como un paquete global de Node.js (`npm install -g` o `npm link`). Todas las operaciones se ejecutan a través del binario global `gsd-canva`, sin copiar runtime al proyecto destino:
+
+*   El framework de desarrollo (`/Users/franciscoojeda/gsd-canva`) actuará como el **paquete global**.
+*   Al inicializar un proyecto destino (usando `gsd-canva init`), el instalador copiará **únicamente plantillas y configuración** — nunca código ejecutable:
+    *   `.gsd-canva/commands/` (Slash commands markdown).
+    *   `.gsd-canva/workflows/` (Guías de flujo).
+    *   `.gsd-canva/plan-templates/` (Plantillas de documentos).
+    *   `.gsd-canva/manifest.json`, `config.json`, `config.local.example.json`.
+*   **Ejecución Global**: Todas las operaciones subsecuentes del agente y del usuario se ejecutarán usando el binario global:
     ```bash
-    node .gsd-canva/bin/gsd-canva.js plan create --name "MiCampaña"
+    gsd-canva plan create --name "MiCampaña"
     ```
-*   Esta estructura garantiza que el proyecto destino sea **portátil al 100% en Git**, permitiendo que cualquier desarrollador o agente clone el repositorio y ejecute los planes de forma inmediata y aislada.
+*   `bin/` y `lib/` siguen siendo parte del paquete global del framework (listados en `package.json` → `files`) para distribución NPM — pero **no se copian al proyecto destino**.
 
 ### 2. Descubrimiento y Verificación de Prompts (Antigravity IDE)
-*   **Encapsulación en `doctor`**: La verificación de compatibilidad con el IDE destino se delegará al comando local `node .gsd-canva/bin/gsd-canva.js doctor --agent <nombre>`.
+*   **Encapsulación en `doctor`**: La verificación de compatibilidad con el IDE destino se delegará al comando global `gsd-canva doctor --agent <nombre>`.
 *   **Verificación Estructural**: El comando realizará una comprobación estructural en el espacio de trabajo local:
     *   Validará la existencia y los permisos de acceso al directorio de comandos del IDE (por defecto `.antigravity/commands/`).
     *   Comprobará la validez sintáctica de las plantillas markdown del framework.
@@ -32,7 +35,7 @@ Para evitar la instalación de binarios o scripts a nivel de sistema global (lo 
 ### 3. Alcance Restringido y Seguro de `--force-all`
 Para evitar cualquier pérdida accidental de datos de campañas del usuario, la bandera `--force-all` tendrá un **alcance de borrado estrictamente limitado**:
 *   **Archivos que SÍ puede sobrescribir/limpiar**:
-    *   Directorio `.gsd-canva/` (manifest, config portable, workflows, plantillas, CLI local `bin/` y runtime `lib/`).
+    *   Directorio `.gsd-canva/` (manifest, config portable, workflows, plantillas).
     *   Específicamente los comandos markdown gestionados por el framework dentro de `.antigravity/commands/` (registrados en el manifest).
 *   **Ausencia de manifiesto**: Si el manifiesto no existe en un proyecto preexistente y se ejecuta `--force-all`, el CLI local o del andamio utilizará una **allowlist fija e inmutable** que corresponde exactamente con los comandos oficiales del framework (`canva-mockup.md`, `canva-draft.md`, `canva-refine.md`, `canva-deliver.md`) para limpiar únicamente esos archivos del directorio `.antigravity/commands/`, evitando tocar cualquier comando ajeno o creado manualmente por el usuario.
 *   **Archivos que JAMÁS tocará ni borrará**:
@@ -44,14 +47,14 @@ Para evitar cualquier pérdida accidental de datos de campañas del usuario, la 
 ### 4. Sincronización Rigurosa en la Entrega (`plan deliver`)
 Manteniendo una frontera limpia y estricta entre el CLI local y el MCP:
 1.  **El Agente (MCP)**: Solicita la exportación a Canva, descarga los archivos de alta calidad PNG/PDF y los escribe físicamente en el directorio local `delivery/plan_[ID]/`.
-2.  **El CLI Local (`node .gsd-canva/bin/gsd-canva.js plan deliver --id <id>`)**: Es invocado por el agente una vez finalizada la descarga.
+2.  **El CLI Global (`gsd-canva plan deliver --id <id>`)**: Es invocado por el agente una vez finalizada la descarga.
     *   El CLI local **no realiza llamadas de red ni interactúa con Canva**.
     *   **Criterio de "Entregable Válido"**: El CLI local valida que el directorio `delivery/plan_[ID]/` exista físicamente, y contenga **al menos un archivo con extensión `.png` o `.pdf` cuyo tamaño en disco sea mayor a cero bytes**.
     *   Si la verificación es exitosa, transiciona el estado del plan de `deliver:ready` a `delivered`. Si los entregables no cumplen las condiciones, arroja un error estructurado bloqueando la transición.
 
 ### 5. Semántica Conservadora del Comando `--adopt`
 Al ejecutar `init --adopt` sobre una carpeta `.gsd-canva/` preexistente sin manifiesto:
-*   El CLI local o del andamio **únicamente adoptará y registrará** los archivos que correspondan estrictamente a rutas y nombres conocidos del framework.
+*   El CLI **únicamente adoptará y registrará** los archivos que correspondan estrictamente a rutas y nombres conocidos del framework.
 *   Calculará sus firmas `sha256` y los registrará como controlados.
 *   Cualquier otro archivo extraño o personalizado dentro de las carpetas será completamente ignorado o listado como "unmanaged", evitando asumir control de archivos arbitrarios del usuario.
 
@@ -114,7 +117,7 @@ El ciclo de vida operativo de cada plan creado bajo `canva-plans/` está goberna
 mockup:pending -> mockup:approved -> draft:pending -> draft:approved -> refine:pending -> deliver:ready -> delivered
 ```
 
-*   **Transición a `deliver:ready`**: El comando CLI local `node .gsd-canva/bin/gsd-canva.js plan approve-refine --id <id>` marcará la aprobación de refinamientos, moviendo el plan **directamente** a `deliver:ready`. El estado `refine:approved` se registrará únicamente como un evento en la propiedad `history` del plan, simplificando la lógica de validación interna.
+*   **Transición a `deliver:ready`**: El comando global `gsd-canva plan approve-refine --id <id>` marcará la aprobación de refinamientos, moviendo el plan **directamente** a `deliver:ready`.
 
 ---
 
@@ -171,13 +174,7 @@ En caso de fallos, `stdout` permanecerá en completo silencio y la salida estruc
   ├── config.local.example.json  <-- Plantilla de configuración local
   ├── commands/                  <-- Slash commands markdown
   ├── workflows/                 <-- Guías y especificaciones de flujo
-  ├── bin/
-  │     └── gsd-canva.js         <-- CLI de enrutamiento local del proyecto (Copiado)
-  ├── lib/
-  │     ├── installer.js         <-- Actualizador y diagnóstico local (Copiado)
-  │     ├── lock-manager.js      <-- Concurrencia atómica local (Copiado)
-  │     ├── plan-manager.js      <-- Máquina de estados local (Copiado)
-  │     └── template-catalog.js  <-- Registro local del catálogo (Copiado)
+  └── plan-templates/            <-- Plantillas de documentos de planificación
   └── .lock                      <-- Lockfile temporal de concurrencia (Gitignored/Temporal)
 
 .antigravity/
@@ -202,9 +199,9 @@ delivery/                        <-- Entregables binarios finales PNG/PDF (Gitig
 
 ### Fase 1: Core del CLI y Runtime Local
 1.  **Infraestructura CLI**: `package.json` (con declaración de `files`), `bin/gsd-canva.js` con el enrutador, verbos de transición, rutas relativas de resolución y salida estricta de éxito `{ ok: true, data: {} }`.
-2.  **Lógica del Instalador Seguro (`lib/installer.js`)**: Fase preflight transaccional, `schemaVersion: 1`, `sha256` hashes, copias directas de comandos a `.antigravity/commands/`, manifest enriquecido, copiador automático del runtime (`bin/` y `lib/`) a `.gsd-canva/`, `--adopt` / `--force-all` (con alcance y allowlist restringida), respaldos fechados en `upgrade` y manipulación de `.gitignore` con marcadores.
+2.  **Lógica del Instalador Seguro (`lib/installer.js`)**: Fase preflight transaccional, `schemaVersion: 1`, `sha256` hashes, copias directas de comandos a `.antigravity/commands/`, manifest enriquecido, `--adopt` / `--force-all` (con alcance y allowlist restringida), respaldos fechados en `upgrade`, migración de limpieza de runtime legacy, y manipulación de `.gitignore` con marcadores.
 3.  **Lógica de Bloqueo e IDs Atómicos (`lib/lock-manager.js`)**: Lockfile con metadatos de PID, hostname, cwd y timestamp para evitar PIDs reciclados en macOS, configurable mediante `GSD_CANVA_LOCK_TIMEOUT_MS`.
 4.  **Gestión de Estados (`lib/plan-manager.js`)**: Operaciones atómicas en archivos y control rígido de la máquina de estados con verbos explícitos (y verificación local del entregable en `deliver` según criterios de extensión y tamaño).
 5.  **Catálogo de Plantillas (`lib/template-catalog.js`)**: Registro estructurado en `system_templates.json`.
-6.  **Plantillas Markdown Iniciales**: Requisitos, workflows y comandos slash (actualizados para ejecutar `node .gsd-canva/bin/gsd-canva.js`).
+6.  **Plantillas Markdown Iniciales**: Requisitos, workflows y comandos slash (actualizados para ejecutar `gsd-canva` global con preflight obligatorio).
 7.  **Suite de Tests y empaquetado**: Pruebas completas de instalación transaccional (incluyendo `.gitignore` y marcadores), transiciones de estados e IDs atómicos, además de validación local de empaquetado con `npm pack`.

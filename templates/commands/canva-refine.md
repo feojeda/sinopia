@@ -6,17 +6,25 @@ Este comando activa la **Fase 2: Ajuste Fino Determinista (Pixel-Perfect)** en C
 
 ## Instrucciones Operativas para el Agente
 
-Cuando el usuario invoque este comando, debes ejecutar de forma obligatoria los siguientes pasos secuenciales utilizando el motor del CLI local de Node:
+Cuando el usuario invoque este comando, debes ejecutar de forma obligatoria los siguientes pasos secuenciales utilizando el CLI global del framework:
+
+### 0. Preflight del Entorno (OBLIGATORIO)
+*   Antes de ejecutar cualquier otra acción, verifica que el CLI global de `gsd-canva` esté disponible en tu `PATH`:
+    ```bash
+    gsd-canva --help
+    ```
+    *(Alternativamente, puedes verificar con `command -v gsd-canva`)*.
+*   ⚠️ **PARADA CRÍTICA**: Si el comando falla o no es encontrado, **detén tu ejecución inmediatamente**. Informa al usuario que el CLI global no está configurado o enlazado en su sistema y solicita que ejecute `npm install -g .` o `npm link` en el directorio raíz del framework antes de volver a intentar. **PROHIBIDO** instalar paquetes o buscar dependencias locales por tu cuenta.
 
 1. **Validación del ID**:
    * Si el usuario no proporciona un ID, ejecuta:
      ```bash
-     node .gsd-canva/bin/gsd-canva.js plan list --phase draft --json
+     gsd-canva plan list --phase draft --json
      ```
    * Muestra los planes listos, solicita la selección del ID y **bloquea el avance** hasta que se defina.
    * Una vez definido el ID (ej: `001`), ejecuta la transición de estado local:
      ```bash
-     node .gsd-canva/bin/gsd-canva.js plan start-refine --id <ID_DE_TRES_DÍGITOS>
+     gsd-canva plan start-refine --id <ID_DE_TRES_DÍGITOS>
      ```
 
 2. **Mapeo de Placeholders y Plan de Edición**:
@@ -40,6 +48,6 @@ Cuando el usuario invoque este comando, debes ejecutar de forma obligatoria los 
    * Si el usuario requiere más ajustes deterministas, itera en el paso 3.
    * Una vez que el usuario dé su aprobación total a los ajustes visuales, ejecuta el comando de aprobación final:
      ```bash
-     node .gsd-canva/bin/gsd-canva.js plan approve-refine --id <ID_DE_TRES_DÍGITOS>
+     gsd-canva plan approve-refine --id <ID_DE_TRES_DÍGITOS>
      ```
    * **Transición Directa**: Este comando moverá el estado del plan local directamente a `deliver:ready` (listo para entrega física), archivando la aprobación en el historial.
