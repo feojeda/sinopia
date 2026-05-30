@@ -3,7 +3,7 @@ const fs = require('fs');
 
 async function runAll() {
   console.log('\n==================================================');
-  console.log('🧪 INICIANDO SUITE DE PRUEBAS DE GSD-CANVA (FASE 2)');
+  console.log('🧪 INICIANDO SUITE DE PRUEBAS DE GSD-CANVA (FASE 3)');
   console.log('==================================================\n');
 
   // Limpiar directorio temporal antes de empezar
@@ -54,6 +54,17 @@ async function runAll() {
     console.log('🟢 Pruebas de Antigravity 2.0 Skills completadas con éxito.\n');
   } catch (err) {
     console.error('🔴 FAILED: Pruebas de Antigravity 2.0 Skills fallaron.');
+    console.error(err);
+    failed = true;
+  }
+
+  try {
+    console.log('--- 5. Pruebas de Codex/OpenCode Adapters (Phase 3) ---');
+    const codexOpencodeTests = require('./codex-opencode.test');
+    await codexOpencodeTests.run();
+    console.log('🟢 Pruebas de Codex/OpenCode Adapters completadas con éxito.\n');
+  } catch (err) {
+    console.error('🔴 FAILED: Pruebas de Codex/OpenCode Adapters fallaron.');
     console.error(err);
     failed = true;
   }
