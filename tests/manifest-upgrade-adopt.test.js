@@ -535,6 +535,135 @@ async function run() {
     assert.strictEqual(m15.agents.opencode.files.length, 0, 'No opencode files in Phase 1 manifest');
     process.chdir(originalCwd);
 
+    console.log('  - Test 16: Partial re-init preserves previously installed adapters in manifest (P1 fix)...');
+    const t16 = makeTempDir('t16-partial-reinit');
+    process.chdir(t16);
+
+    const initAll = await installer.init({ agent: 'all', frameworkVersion: '1.3.0' });
+    assert.strictEqual(initAll.agentsInstalled.antigravity.count, 4);
+    assert.strictEqual(initAll.agentsInstalled.codex.count, 4);
+    assert.strictEqual(initAll.agentsInstalled.opencode.count, 4);
+
+    const initCodex = await installer.init({ agent: 'codex', frameworkVersion: '1.3.0' });
+    assert.strictEqual(initCodex.agentsInstalled.codex.count, 4);
+
+    const m16 = JSON.parse(fs.readFileSync('.gsd-canva/manifest.json', 'utf8'));
+    assert.strictEqual(m16.schemaVersion, 2);
+    assert.ok(m16.agents.antigravity, 'Antigravity agent should survive partial re-init');
+    assert.ok(m16.agents.opencode, 'OpenCode agent should survive partial re-init');
+    assert.strictEqual(m16.agents.antigravity.files.length, 4, 'Antigravity files should survive');
+    assert.strictEqual(m16.agents.opencode.files.length, 4, 'OpenCode files should survive');
+
+    const agFiles = m16.files.filter(f => f.target.startsWith('.agents/skills/'));
+    const ocFiles = m16.files.filter(f => f.target.startsWith('.opencode/commands/'));
+    assert.strictEqual(agFiles.length, 4, 'Flat files should preserve antigravity entries');
+    assert.strictEqual(ocFiles.length, 4, 'Flat files should preserve opencode entries');
+
+    assert.ok(
+      fs.existsSync(path.join(t16, '.agents/skills/canva-mockup/SKILL.md')),
+      'Antigravity skills should still be on disk'
+    );
+    assert.ok(
+      fs.existsSync(path.join(t16, '.opencode/commands/canva-mockup.md')),
+      'OpenCode commands should still be on disk'
+    );
+    process.chdir(originalCwd);
+
+    console.log('  - Test 17: upgrade --adopt preserves modified managed files (P2 fix)...');
+    const t17 = makeTempDir('t17-upgrade-adopt');
+    process.chdir(t17);
+
+    await installer.init({ agent: 'antigravity', frameworkVersion: '1.3.0' });
+
+    const skill17 = path.join(t17, '.agents/skills/canva-mockup/SKILL.md');
+    fs.writeFileSync(skill17, '---\nname: canva-mockup\n---\nAdopted user content.', 'utf8');
+
+    const up17 = await installer.upgrade({ adopt: true, frameworkVersion: '1.3.1' });
+    assert.strictEqual(up17.upgraded, true);
+
+    const preserved17 = fs.readFileSync(skill17, 'utf8');
+    assert.ok(preserved17.includes('Adopted user content'), 'upgrade --adopt should preserve user content');
+    assert.ok(!preserved17.includes('Instrucciones Operativas'), 'Should not overwrite with rendered template');
+
+    assert.strictEqual(up17.backupsCreated.length, 0, 'upgrade --adopt should create no backups');
+
+    const m17 = JSON.parse(fs.readFileSync('.gsd-canva/manifest.json', 'utf8'));
+    const entry17 = m17.agents.antigravity.files.find(
+      f => f.target === '.agents/skills/canva-mockup/SKILL.md'
+    );
+    assert.ok(entry17, 'Entry should exist');
+    const expectedHash = crypto.createHash('sha256').update(preserved17).digest('hex');
+    assert.strictEqual(entry17.sha256, expectedHash, 'Hash should match preserved user content');
+    process.chdir(originalCwd);
+
+    console.log('  - Test 18: upgrade --adopt registers unmanaged official artifacts (P2 fix)...');
+    const t18 = makeTempDir('t18-upgrade-adopt-unmanaged');
+    process.chdir(t18);
+
+    await installer.init({ agent: 'codex', frameworkVersion: '1.3.0' });
+
+    const adapter = agentAdapters.getAdapter('opencode');
+    for (const { capability, instructions } of agentAdapters.loadAllCapabilities()) {
+      const targets = adapter.getTargets(capability);
+      for (const { targetPath } of targets) {
+        const full = path.join(t18, targetPath);
+        fs.mkdirSync(path.dirname(full), { recursive: true });
+        fs.writeFileSync(full, `---\ndescription: user\n---\nUser ${capability.id} content.`, 'utf8');
+      }
+    }
+
+    const m18before = JSON.parse(fs.readFileSync('.gsd-canva/manifest.json', 'utf8'));
+    assert.ok(!m18before.agents.opencode || m18before.agents.opencode.files.length === 0, 'No opencode files before upgrade --adopt');
+
+    const up18 = await installer.upgrade({ adopt: true, frameworkVersion: '1.3.1' });
+    assert.strictEqual(up18.upgraded, true);
+
+    const m18after = JSON.parse(fs.readFileSync('.gsd-canva/manifest.json', 'utf8'));
+    assert.strictEqual(m18after.agents.opencode.files.length, 4, 'Should adopt 4 opencode files');
+
+    for (const f of m18after.agents.opencode.files) {
+      assert.strictEqual(f.managed, true);
+      const full = path.join(t18, f.target);
+      const content = fs.readFileSync(full, 'utf8');
+      assert.ok(content.includes('User'), `Adopted ${f.target} should preserve user content`);
+      assert.ok(!content.startsWith('# Slash Command:'), `Adopted ${f.target} should not be rendered template`);
+    }
+    process.chdir(originalCwd);
+
+    console.log('  - Test 19: upgrade --force-all regenerates unmanaged official artifacts (P2 fix)...');
+    const t19 = makeTempDir('t19-upgrade-forceall');
+    process.chdir(t19);
+
+    await installer.init({ agent: 'codex', frameworkVersion: '1.3.0' });
+
+    const agAdapter = agentAdapters.getAdapter('antigravity');
+    for (const { capability } of agentAdapters.loadAllCapabilities()) {
+      const targets = agAdapter.getTargets(capability);
+      for (const { targetPath } of targets) {
+        const full = path.join(t19, targetPath);
+        fs.mkdirSync(path.dirname(full), { recursive: true });
+        fs.writeFileSync(full, `---\nname: ${capability.id}\n---\nStale content.`, 'utf8');
+      }
+    }
+
+    const m19before = JSON.parse(fs.readFileSync('.gsd-canva/manifest.json', 'utf8'));
+    assert.ok(!m19before.agents.antigravity || m19before.agents.antigravity.files.length === 0, 'No antigravity managed files before');
+
+    const up19 = await installer.upgrade({ forceAll: true, frameworkVersion: '1.3.1' });
+    assert.strictEqual(up19.upgraded, true);
+
+    const m19after = JSON.parse(fs.readFileSync('.gsd-canva/manifest.json', 'utf8'));
+    assert.strictEqual(m19after.agents.antigravity.files.length, 4, 'Should register 4 antigravity files');
+
+    for (const f of m19after.agents.antigravity.files) {
+      assert.strictEqual(f.managed, true);
+      const full = path.join(t19, f.target);
+      const content = fs.readFileSync(full, 'utf8');
+      assert.ok(!content.includes('Stale content'), `Should regenerate ${f.target}`);
+      assert.ok(content.includes('---'), `Should have rendered content for ${f.target}`);
+    }
+    process.chdir(originalCwd);
+
   } finally {
     process.chdir(originalCwd);
     if (fs.existsSync(tempBase)) {
