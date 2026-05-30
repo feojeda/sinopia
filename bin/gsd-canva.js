@@ -163,12 +163,16 @@ ${chalk.yellow('Próximos pasos recomendados para tu agente de IA:')}
 program
   .command('upgrade')
   .description('Actualiza las plantillas y comandos de gsd-canva en el proyecto')
+  .option('--force-all', 'Fuerza la regeneración de artifacts oficiales, con backup de archivos modificados')
+  .option('--adopt', 'Adopta artifacts existentes sin sobrescribir contenido del usuario')
   .option('--json', 'Salida estructurada en JSON puro')
   .action(async (options) => {
     try {
       const installer = require('../lib/installer');
       const result = await installer.upgrade({
         json: !!options.json,
+        forceAll: !!options.forceAll,
+        adopt: !!options.adopt,
         frameworkVersion
       });
       
