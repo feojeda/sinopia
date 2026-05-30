@@ -1,0 +1,31 @@
+{
+  "name": "gsd-canva",
+  "version": "1.0.0",
+  "description": "Spec-Driven Development Framework and CLI for structured Canva element creation in Antigravity 2.0.",
+  "main": "bin/gsd-canva.js",
+  "bin": {
+    "gsd-canva": "./bin/gsd-canva.js"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "templates"
+  ],
+  "scripts": {
+    "test": "node tests/run.js"
+  },
+  "keywords": [
+    "gsd",
+    "canva",
+    "mcp",
+    "spec-driven",
+    "antigravity",
+    "agent"
+  ],
+  "author": "Antigravity",
+  "license": "MIT",
+  "dependencies": {
+    "chalk": "^4.1.2",
+    "commander": "^11.1.0"
+  }
+}

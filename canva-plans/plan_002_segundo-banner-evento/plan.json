@@ -1,0 +1,18 @@
+{
+  "id": "002",
+  "name": "Segundo Banner Evento",
+  "phase": "mockup",
+  "status": "pending",
+  "canvaDesignId": "",
+  "timestamps": {
+    "created": "2026-05-30T06:16:42.785Z",
+    "updated": "2026-05-30T06:16:42.785Z"
+  },
+  "history": [
+    {
+      "timestamp": "2026-05-30T06:16:42.785Z",
+      "action": "created",
+      "details": "Plan secuencial inicializado"
+    }
+  ]
+}

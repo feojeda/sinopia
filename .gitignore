@@ -1,0 +1,6 @@
+node_modules/
+delivery/
+.gsd-canva/.lock
+.gsd-canva/config.local.json
+*.log
+.DS_Store
