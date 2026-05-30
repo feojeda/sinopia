@@ -206,7 +206,7 @@ async function run() {
   if (fs.existsSync(tempDir)) fs.rmSync(tempDir, { recursive: true, force: true });
   fs.mkdirSync(tempDir, { recursive: true });
 
-  fs.writeFileSync(path.join(tempDir, 'capability.json'), JSON.stringify({ title: 'No ID' }));
+  fs.writeFileSync(path.join(tempDir, 'capability.json'), JSON.stringify({ title: 'No ID', invocation: '/test' }));
   fs.writeFileSync(path.join(tempDir, 'instructions.md'), 'content');
 
   threw = false;
@@ -220,7 +220,7 @@ async function run() {
   assert.strictEqual(threw, true);
 
   console.log('  - Test 11: loadCapability rejects missing description in JSON...');
-  fs.writeFileSync(path.join(tempDir, 'capability.json'), JSON.stringify({ id: 'test', title: 'No Desc' }));
+  fs.writeFileSync(path.join(tempDir, 'capability.json'), JSON.stringify({ id: 'test', title: 'No Desc', invocation: '/test' }));
 
   threw = false;
   try {
@@ -234,7 +234,7 @@ async function run() {
 
   console.log('  - Test 12: loadCapability rejects empty instructions.md...');
   fs.writeFileSync(path.join(tempDir, 'capability.json'), JSON.stringify({
-    id: 'test', description: 'desc'
+    id: 'test', description: 'desc', title: 'Test', invocation: '/test'
   }));
   fs.writeFileSync(path.join(tempDir, 'instructions.md'), '   \n  \n  ');
 
@@ -246,6 +246,78 @@ async function run() {
     assert.strictEqual(e.code, 'GSDC_CAPABILITY_EMPTY_INSTRUCTIONS');
   }
   assert.strictEqual(threw, true);
+
+  console.log('  - Test 13: loadCapability rejects missing title (P2-002)...');
+  fs.writeFileSync(path.join(tempDir, 'capability.json'), JSON.stringify({
+    id: 'test', description: 'desc', invocation: '/test'
+  }));
+  fs.writeFileSync(path.join(tempDir, 'instructions.md'), 'content');
+
+  threw = false;
+  try {
+    adapters.loadCapability(tempDir);
+  } catch (e) {
+    threw = true;
+    assert.strictEqual(e.code, 'GSDC_CAPABILITY_INVALID');
+    assert.ok(e.message.includes('title'));
+  }
+  assert.strictEqual(threw, true);
+
+  console.log('  - Test 14: loadCapability rejects missing invocation (P2-002)...');
+  fs.writeFileSync(path.join(tempDir, 'capability.json'), JSON.stringify({
+    id: 'test', description: 'desc', title: 'Test'
+  }));
+
+  threw = false;
+  try {
+    adapters.loadCapability(tempDir);
+  } catch (e) {
+    threw = true;
+    assert.strictEqual(e.code, 'GSDC_CAPABILITY_INVALID');
+    assert.ok(e.message.includes('invocation'));
+  }
+  assert.strictEqual(threw, true);
+
+  console.log('  - Test 15: loadCapability rejects triggers as string (P3-001)...');
+  fs.writeFileSync(path.join(tempDir, 'capability.json'), JSON.stringify({
+    id: 'test', description: 'desc', title: 'Test', invocation: '/test', triggers: '/test'
+  }));
+
+  threw = false;
+  try {
+    adapters.loadCapability(tempDir);
+  } catch (e) {
+    threw = true;
+    assert.strictEqual(e.code, 'GSDC_CAPABILITY_INVALID');
+    assert.ok(e.message.includes('triggers'));
+  }
+  assert.strictEqual(threw, true);
+
+  console.log('  - Test 16: loadAllCapabilities skips non-capability dirs (P2-001)...');
+  const skipDir = path.join(tempDir, 'empty-subdir');
+  const validDir = path.join(tempDir, 'valid-cap');
+  fs.mkdirSync(skipDir, { recursive: true });
+  fs.mkdirSync(validDir, { recursive: true });
+  fs.writeFileSync(path.join(validDir, 'capability.json'), JSON.stringify({
+    id: 'test', description: 'desc', title: 'Test', invocation: '/test', triggers: ['/test']
+  }));
+  fs.writeFileSync(path.join(validDir, 'instructions.md'), 'content');
+
+  const loaded = adapters.loadAllCapabilities(tempDir);
+  assert.strictEqual(loaded.length, 1, 'Should load only the valid capability, skip empty subdir');
+  assert.strictEqual(loaded[0].capability.id, 'test');
+
+  console.log('  - Test 17: antigravity renderer handles missing triggers gracefully (P3-001)...');
+  const capNoTriggers = makeCapability();
+  delete capNoTriggers.triggers;
+  const noTriggersResult = antigravitySkill.render(capNoTriggers, SAMPLE_INSTRUCTIONS);
+  assert.ok(noTriggersResult.includes('name: test-cap'), 'Should still render without triggers');
+  assert.ok(!noTriggersResult.includes('invokes'), 'Should not mention triggers in description');
+
+  console.log('  - Test 18: antigravity renderer no longer lowercases description (P3-003)...');
+  const capMcp = makeCapability({ description: 'MCP Integration Test' });
+  const mcpResult = antigravitySkill.render(capMcp, SAMPLE_INSTRUCTIONS);
+  assert.ok(mcpResult.includes('MCP Integration Test'), 'Should preserve original casing');
 
   fs.rmSync(tempDir, { recursive: true, force: true });
 }
