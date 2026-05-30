@@ -1,4 +1,4 @@
-# Plan: Preguntas Interactivas en `/canva-mockup` (Rev. 6)
+# Plan: Preguntas Interactivas en `/canva-mockup` (Rev. 7)
 
 **Fecha**: 2026-05-30
 **Estado**: Pendiente de aprobación
@@ -35,7 +35,7 @@ Esta proposal asume que el commit `7d571b6` ya está en main:
 
 ### 1. `lib/plan-manager.js` — Helper compartido `readJsonOrThrow()` y `getEmptyFields()`
 
-Extraer un helper `readJsonOrThrow(filePath)` que envuelva `JSON.parse(fs.readFileSync(...))` con manejo consistente de JSON corrupto (`GSDC_JSON_PARSE_ERROR`, exit 15). Usar este helper en todas las funciones tocadas (`questions()`, `answer()`, `resetConfirmation()`, y las existentes que usan `JSON.parse` directo).
+Extraer un helper `readJsonOrThrow(filePath, planId)` que envuelva `JSON.parse(fs.readFileSync(...))` con manejo consistente de errores: si el archivo no existe → `GSDC_PLAN_NOT_FOUND` (exit 24), si JSON es corrupto → `GSDC_JSON_PARSE_ERROR` (exit 15). Usar este helper en todas las funciones tocadas (`questions()`, `answer()`, `resetConfirmation()`, y las existentes que usan `JSON.parse` directo). **No aplica** a `list()`, que es tolerante a planes individuales corruptos y los omite silenciosamente.
 
 Extraer la lógica de detección de campos vacíos/placeholders que actualmente está duplicada en `confirmDecisions()` (línea 183) y se necesitará en `questions()`. Un solo helper:
 
@@ -53,9 +53,9 @@ function getEmptyFields(decisions, fieldList) {
 `confirmDecisions()` reutiliza este helper en vez de su lógica inline. `resolveQuestions()` (línea 275) también tiene validación duplicada y debe usar el mismo helper. `questions()` lo usa para determinar `filled` vs `pending`. Esto garantiza que los tres siempre coinciden — si `questions()` reporta `readyToConfirm: true`, `confirm-decisions` y `resolve-questions` no pueden fallar.
 
 **Semántica de contadores**:
-- `readyToConfirm`: `true` cuando `requiredPendingCount === 0`. El agente puede avanzar a confirmación.
+- `readyToConfirm`: `true` cuando `requiredPendingCount === 0`. El agente **debe presentar el resumen y pedir confirmación explícita** — NO es permiso para auto-confirmar. El agente nunca ejecuta `confirm-decisions` sin "sí" explícito del usuario.
 - `allQuestionsAnswered`: `true` cuando `requiredPendingCount === 0 && optionalPendingCount === 0`. Todas las preguntas (incluida assets) fueron respondidas.
-- El agente puede confirmar cuando `readyToConfirm === true`, sin importar `optionalPendingCount`.
+- El agente puede avanzar al paso de confirmación cuando `readyToConfirm === true`, sin importar `optionalPendingCount`.
 
 ### 2. `lib/plan-manager.js` — Agregar función `questions(planId)`
 
@@ -63,16 +63,18 @@ Leer `decisions.json` del plan, filtrar campos vacíos/placeholders usando el he
 
 ```json
 {
-  "planId": "001",
-  "planState": "mockup:questions_pending",
-  "totalFields": 7,
-  "filledCount": 0,
-  "requiredPendingCount": 6,
-  "optionalPendingCount": 1,
-  "readyToConfirm": false,
-  "allQuestionsAnswered": false,
-  "filled": [],
-  "pending": [
+  "ok": true,
+  "data": {
+    "planId": "001",
+    "planState": "mockup:questions_pending",
+    "totalFields": 7,
+    "filledCount": 0,
+    "requiredPendingCount": 6,
+    "optionalPendingCount": 1,
+    "readyToConfirm": false,
+    "allQuestionsAnswered": false,
+    "filled": [],
+    "pending": [
     {
       "id": "vertical",
       "question": "¿Qué tipo de diseño quieres crear?",
@@ -150,13 +152,14 @@ Leer `decisions.json` del plan, filtrar campos vacíos/placeholders usando el he
       "required": false
     }
   ]
+  }
 }
 ```
 
 **Regla de valores**: `value` siempre contiene el texto final que se escribe tal cual en `decisions.json`. No hay códigos internos. Lo que el usuario selecciona o escribe es lo que se guarda.
 
 **Comportamiento ante estados inválidos**:
-- Plan no existe → `GSDC_JSON_PARSE_ERROR` (exit 15)
+- Plan no existe → `GSDC_PLAN_NOT_FOUND` (exit 24)
 - `decisions.json` corrupto → `GSDC_JSON_PARSE_ERROR` (exit 15)
 - Plan no está en `mockup:questions_pending` → **ERROR** `GSDC_INVALID_STATE` (exit 13). Un agente no debe interpretar "sin preguntas" como permiso para avanzar.
 - Todos los campos requeridos ya llenos → retorna `requiredPendingCount: 0`, `optionalPendingCount` según corresponda, `filled` con los valores actuales.
@@ -191,7 +194,7 @@ Comportamiento:
 
 Errores:
 - `field` no reconocido → `GSDC_INVALID_FIELD` (exit 22)
-- Plan no existe → `GSDC_JSON_PARSE_ERROR` (exit 15)
+- Plan no existe → `GSDC_PLAN_NOT_FOUND` (exit 24)
 - Estado incorrecto → `GSDC_INVALID_STATE` (exit 13)
 - Ya confirmado → `GSDC_DECISIONS_LOCKED` (exit 23)
 
@@ -206,15 +209,16 @@ gsd-canva plan reset-confirmation --id <ID>
 Comportamiento:
 - Valida que el plan exista
 - Acepta estados `mockup:questions_pending`, `mockup:ready_for_html` o `mockup:pending_approval`
-- Si el estado es `ready_for_html`, revierte a `mockup:questions_pending` (actualiza `plan.json` + agrega evento al history)
+- Si el estado es `questions_pending` y no hay confirmación previa → no-op, retorna éxito sin cambios (idempotente)
+- Si el estado es `ready_for_html` o `pending_approval`, revierte a `mockup:questions_pending` (actualiza `plan.json` + agrega evento al history)
 - Si existe `mockup.html` en la carpeta del plan, lo renombra a `mockup.html.stale.<timestamp>` para invalidarlo — `submitMockup()` solo acepta `mockup.html`, no `.stale`
 - Pone `confirmation.confirmed = false`, `confirmation.confirmedAt = null`, `confirmation.decisionsHash = ""`
 - Orden de operaciones: acquire lock → leer archivos → validar estado → renombrar mockup stale → escribir decisions.json → escribir plan.json → release lock en `finally`
-- **Idempotencia**: Si falla entre renombrar mockup y escribir JSON, el estado es consistente: `mockup.html` fue renombrado pero `plan.json` no fue revertido → el plan sigue en `ready_for_html` o `pending_approval` y `mockup.html` está stale. El usuario puede re-ejecutar `reset-confirmation` o regenerar el mockup. No se necesita rollback explícito porque el estado `ready_for_html`/`pending_approval` sin mockup válido es detectable por `submitMockup()`.
+- **Idempotencia**: Si el estado es `questions_pending` sin confirmación previa → no-op. Si falla entre renombrar mockup y escribir JSON (desde `ready_for_html` o `pending_approval`), el estado es consistente: `mockup.html` fue renombrado pero `plan.json` no fue revertido → el plan sigue en su estado anterior y `mockup.html` está stale. El usuario puede re-ejecutar `reset-confirmation` o regenerar el mockup. No se necesita rollback explícito porque un estado `ready_for_html`/`pending_approval` sin mockup válido es detectable por `submitMockup()`.
 - Retorna confirmación del reset + nuevo estado
 
 Errores:
-- Plan no existe → `GSDC_JSON_PARSE_ERROR` (exit 15)
+- Plan no existe → `GSDC_PLAN_NOT_FOUND` (exit 24)
 - Estado incorrecto → `GSDC_INVALID_STATE` (exit 13)
 
 Esto elimina la contradicción: el flujo de corrección usa un comando CLI, no edición directa de `decisions.json`. Además, funciona incluso después de `resolve-questions` (estado `ready_for_html`), revirtiendo el plan a `questions_pending` para permitir edición completa.
@@ -255,14 +259,15 @@ Texto completo que reemplaza **toda la sección 2** del template actual:
         gsd-canva plan questions --id <ID_DE_TRES_DÍGITOS> --json
         ```
     *   **Renderizado de preguntas (first-class: chat numerado)**:
-        *   Presenta cada pregunta pendiente (`requiredPendingCount > 0`) al usuario de forma clara y numerada.
+        *   Presenta cada pregunta pendiente al usuario de forma clara y numerada. Las preguntas de campos requeridos (`required: true`) se presentan primero. Si `optionalPendingCount > 0` después de responder los requeridos, se presenta la pregunta de assets como pregunta adicional no bloqueante.
         *   Para campos tipo `choice`: muestra las opciones numeradas + opción "Otro" para valor personalizado.
         *   Para campos tipo `text`: muestra el placeholder como guía.
         *   Espera la respuesta del usuario antes de pasar a la siguiente pregunta.
+        *   **Mapeo de entrada numérica**: Si el usuario responde con un número (ej: "1"), el agente debe mapearlo al `value` de la opción correspondiente en el JSON de preguntas. El `--value` pasado a `plan answer` siempre debe ser el texto final del valor, nunca el índice numérico.
     *   **Si tu entorno ofrece UI interactiva nativa** (herramientas de questions, choices, formularios):
         *   Puedes usarla como alternativa al chat numerado para mejorar la experiencia.
         *   Pero el flujo y las preguntas deben venir del JSON de `plan questions`, no improvisadas.
-    *   **Pregunta recomendada de assets**: Si `optionalPendingCount > 0`, pregunta si el usuario quiere proveer assets. Es **recomendada** pero **no bloqueante** — el agente puede avanzar a confirmación con `optionalPendingCount > 0`. Si el usuario dice que no, simplemente se omite. No se guarda valor placeholder.
+    *   **Pregunta recomendada de assets**: Si `optionalPendingCount > 0`, pregunta si el usuario quiere proveer assets. Es **recomendada** pero **no bloqueante** — el agente puede avanzar a confirmación con `optionalPendingCount > 0`. Si el usuario dice que no o lo omite, no se ejecuta `plan answer` para `assets` — el campo queda vacío en `decisions.json` y `optionalPendingCount` permanece > 0. No se guarda valor placeholder. `readyToConfirm` no se ve afectado.
     *   **Guardado de respuestas**:
         *   Por cada respuesta del usuario, ejecuta:
             ```bash
@@ -337,7 +342,7 @@ Si el template de `preguntas.md` solo refleja los 6 campos originales, agregar s
 - **Test answer estado incorrecto**: plan en `mockup:ready_for_html` → error `GSDC_INVALID_STATE` (exit 13).
 - **Test answer post-confirmación**: ejecutar `confirm-decisions` y luego `plan answer` → error `GSDC_DECISIONS_LOCKED` (exit 23).
 - **Test questions estado incorrecto**: plan en `mockup:ready_for_html` → error `GSDC_INVALID_STATE` (exit 13).
-- **Test questions plan inexistente**: `--id 999` → error `GSDC_JSON_PARSE_ERROR` (exit 15).
+- **Test questions plan inexistente**: `--id 999` → error `GSDC_PLAN_NOT_FOUND` (exit 24).
 - **Test questions decisions corrupto**: escribir JSON inválido en `decisions.json` → error `GSDC_JSON_PARSE_ERROR` (exit 15).
 - **Test reset-confirmation**: confirmar, ejecutar `reset-confirmation`, verificar que `confirmed === false` y `decisionsHash === ""`.
 - **Test reset-confirmation desbloquea answer**: reset → `plan answer` funciona de nuevo.
@@ -362,6 +367,7 @@ Agregar sección separada en `tests/plan.test.js` que ejecute los subcomandos re
 |---|---|---|
 | `GSDC_INVALID_FIELD` | `22` | El campo especificado no es un campo conocido de `decisions.json`. |
 | `GSDC_DECISIONS_LOCKED` | `23` | No se puede modificar `decisions.json` después de `confirm-decisions`. Usar `reset-confirmation` primero. |
+| `GSDC_PLAN_NOT_FOUND` | `24` | El plan especificado no existe (directorio o archivo no encontrado). |
 
 ---
 
@@ -397,17 +403,21 @@ Agregar sección separada en `tests/plan.test.js` que ejecute los subcomandos re
 - `create()` inicializa `assets: ""` para que el campo exista siempre en `decisions.json`.
 - `plan answer` rechaza escritura si `confirmation.confirmed === true` — protege el hash de integridad post-confirmación.
 - `plan questions` falla con error si el plan no está en `mockup:questions_pending` — no hay silencio ante estado incorrecto.
-- `reset-confirmation` es el único mecanismo para desbloquear — elimina la contradicción de "editar decisions.json directamente para resetear". Acepta `mockup:ready_for_html` y revierte a `questions_pending`.
+- `reset-confirmation` es el único mecanismo para desbloquear — elimina la contradicción de "editar decisions.json directamente para resetear". Acepta `mockup:ready_for_html` y `mockup:pending_approval` y revierte a `questions_pending`. En `questions_pending` sin confirmación previa es no-op (idempotente).
 - El helper compartido `getEmptyFields()` garantiza que `questions()`, `confirmDecisions()` y `resolveQuestions()` siempre coinciden en qué campos están vacíos.
 - `plan answer` retorna `requiredPendingCount` y `optionalPendingCount` (no `remaining` genérico) — consistente con `questions()`.
 - La sección 2 completa del template se reemplaza, no solo el roadblock — elimina todas las instrucciones de escritura directa en `decisions.json`. La sección 3 (wireframing) no se toca — se ejecuta después del yield gate.
 - `answer()` y `resetConfirmation()` adquieren lock global **antes** de leer y validar — protege contra race conditions con comandos concurrentes.
 - `assets` se incluye en el payload del hash criptográfico — cambios en assets post-confirmación son detectados.
 - Si el usuario omite assets, simplemente se omite — no se guarda placeholder. `assets` queda vacío en `decisions.json` y `optionalPendingCount` permanece > 0, pero eso no bloquea el avance.
-- `reset-confirmation` desde `ready_for_html` renombra `mockup.html` a `.stale` para invalidarlo — evita submit de HTML generado con decisiones viejas.
+- `reset-confirmation` desde `ready_for_html` o `pending_approval` renombra `mockup.html` a `.stale` para invalidarlo — evita submit de HTML generado con decisiones viejas.
 - Tests CLI via `child_process` usan `process.execPath` + ruta a `bin/gsd-canva.js` — no requieren instalación global.
-- `readJsonOrThrow()` helper centraliza parsing de JSON con error consistente.
+- `readJsonOrThrow()` helper centraliza parsing de JSON con error consistente. No aplica a `list()` que es tolerante a planes corruptos.
 - `getEmptyFields` se prueba indirectamente, no se exporta — `questions()` y `confirmDecisions()` son la API pública.
 - Verificación captura `planId` dinámicamente desde `plan create --json` en workspace temporal limpio.
 - Referencias a `mockup:pending` en `roadmap_progreso.md` y `README.md` se verifican y actualizan.
 - `preguntas.md` template se actualiza para incluir campo `assets` opcional.
+- `readyToConfirm: true` significa "presenta resumen y pide confirmación explícita", no "auto-confirma". El agente nunca ejecuta `confirm-decisions` sin "sí" del usuario.
+- `GSDC_PLAN_NOT_FOUND` (exit 24) separa "plan no existe" de `GSDC_JSON_PARSE_ERROR` (exit 15) para "JSON corrupto". Todas las funciones nuevas usan esta distinción.
+- `questions()` y `answer()` retornan JSON con wrapper `{ok: true, data: {...}}` — consistente entre ambos endpoints.
+- El renderizado de preguntas siempre presenta assets si `optionalPendingCount > 0`, independientemente de si los requeridos ya están completos. El agente mapea entrada numérica del chat al `value` de la opción correspondiente — nunca pasa índices a `plan answer`.
