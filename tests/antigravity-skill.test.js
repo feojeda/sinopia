@@ -17,6 +17,13 @@ function setupTestProject() {
   return originalCwd;
 }
 
+function makeTempDir(name) {
+  const dir = path.resolve(__dirname, name);
+  if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
 async function run() {
   const originalCwd = setupTestProject();
 
@@ -88,7 +95,7 @@ async function run() {
       assert.strictEqual(entry.managed, true, `Skill entry ${entry.target} should be managed`);
     }
 
-    console.log('  - Test 6: doctor --agent antigravity validates skills structure...');
+    console.log('  - Test 6: doctor --agent antigravity validates official skills...');
     const doctorResult = await installer.doctor({ agent: 'antigravity' });
     assert.strictEqual(doctorResult.healthy, true);
     assert.strictEqual(doctorResult.agentValidated, true);
@@ -97,63 +104,143 @@ async function run() {
     assert.strictEqual(doctorResult.agentDetails.skillsDir, true);
     assert.strictEqual(doctorResult.agentDetails.skillsCount, 4);
     assert.strictEqual(doctorResult.agentDetails.validSkills, 4);
+    assert.strictEqual(doctorResult.agentDetails.allOfficialSkillsPresent, true);
+    assert.strictEqual(doctorResult.agentDetails.expectedSkills, 4);
+    assert.strictEqual(doctorResult.agentDetails.missingSkills, undefined);
 
-    console.log('  - Test 7: doctor detects missing SKILL.md files...');
+    console.log('  - Test 7: doctor detects missing official SKILL.md files...');
     fs.unlinkSync(path.join(tempProjectDir, '.agents/skills/canva-mockup/SKILL.md'));
     const doctorMissing = await installer.doctor({ agent: 'antigravity' });
     assert.strictEqual(doctorMissing.agentDetails.validSkills, 3);
     assert.ok(doctorMissing.agentDetails.missingSkills);
     assert.ok(doctorMissing.agentDetails.missingSkills.includes('canva-mockup'));
+    assert.strictEqual(doctorMissing.agentDetails.allOfficialSkillsPresent, false);
 
-    console.log('  - Test 8: doctor reports when no skills installed...');
-    const noSkillDir = path.resolve(__dirname, './temp-no-skills');
-    if (fs.existsSync(noSkillDir)) fs.rmSync(noSkillDir, { recursive: true, force: true });
-    fs.mkdirSync(noSkillDir, { recursive: true });
+    console.log('  - Test 8: doctor reports all missing skills when .agents/skills/ absent...');
+    const noSkillDir = makeTempDir('./temp-no-skills');
     process.chdir(noSkillDir);
     fs.mkdirSync(path.join(noSkillDir, '.gsd-canva'), { recursive: true });
     fs.writeFileSync(path.join(noSkillDir, '.gsd-canva/manifest.json'), '{}');
 
     const doctorNoSkills = await installer.doctor({ agent: 'antigravity' });
     assert.strictEqual(doctorNoSkills.agentDetails.skillsDir, false);
+    assert.strictEqual(doctorNoSkills.agentDetails.missingSkills.length, 4, 'Should list all 4 official skills as missing');
+    assert.strictEqual(doctorNoSkills.agentDetails.allOfficialSkillsPresent, false);
     process.chdir(tempProjectDir);
 
-    console.log('  - Test 9: init without --agent does not install skills...');
-    if (fs.existsSync(noSkillDir)) fs.rmSync(noSkillDir, { recursive: true, force: true });
-    fs.mkdirSync(noSkillDir, { recursive: true });
-    process.chdir(noSkillDir);
+    console.log('  - Test 9: doctor reports extra non-official skills...');
+    const extraDir = path.join(tempProjectDir, '.agents/skills/custom-extra');
+    fs.mkdirSync(extraDir, { recursive: true });
+    fs.writeFileSync(path.join(extraDir, 'SKILL.md'), '---\nname: custom-extra\n---\nExtra skill.');
+    const doctorExtra = await installer.doctor({ agent: 'antigravity' });
+    assert.ok(doctorExtra.agentDetails.extraSkills);
+    assert.ok(doctorExtra.agentDetails.extraSkills.includes('custom-extra'));
+    fs.rmSync(extraDir, { recursive: true, force: true });
+
+    console.log('  - Test 10: init without --agent does not install skills...');
+    const noAgentDir = makeTempDir('./temp-no-agent');
+    process.chdir(noAgentDir);
 
     const initNoAgent = await installer.init({ frameworkVersion: '1.3.0' });
     assert.strictEqual(initNoAgent.initialized, true);
     assert.strictEqual(initNoAgent.agentSkillsInstalled, undefined);
-    assert.ok(!fs.existsSync(path.join(noSkillDir, '.agents/skills')), 'No skills dir without --agent');
+    assert.ok(!fs.existsSync(path.join(noAgentDir, '.agents/skills')), 'No skills dir without --agent');
     process.chdir(tempProjectDir);
 
-    console.log('  - Test 10: init with unsupported agent throws error...');
-    let threwAgent = false;
+    console.log('  - Test 11: init with unsupported agent (unknown) throws error...');
+    const unknownDir = makeTempDir('./temp-unknown');
+    process.chdir(unknownDir);
+    let threwUnknown = false;
     try {
       await installer.init({ agent: 'unknown-agent', frameworkVersion: '1.3.0' });
     } catch (e) {
-      threwAgent = true;
+      threwUnknown = true;
       assert.strictEqual(e.code, 'GSDC_ADAPTER_UNKNOWN');
     }
-    assert.strictEqual(threwAgent, true, 'Should throw for unknown agent');
+    assert.strictEqual(threwUnknown, true, 'Should throw for unknown agent');
+    process.chdir(tempProjectDir);
 
-    console.log('  - Test 11: Re-init with --agent antigravity is idempotent...');
-    const mockupSkillPath = path.join(tempProjectDir, '.agents/skills/canva-mockup/SKILL.md');
-    if (fs.existsSync(mockupSkillPath)) {
-      fs.rmSync(mockupSkillPath);
+    console.log('  - Test 12: init --agent codex throws error (P1-1 fix: fail fast)...');
+    const codexDir = makeTempDir('./temp-codex');
+    process.chdir(codexDir);
+    let threwCodex = false;
+    try {
+      await installer.init({ agent: 'codex', frameworkVersion: '1.3.0' });
+    } catch (e) {
+      threwCodex = true;
+      assert.strictEqual(e.code, 'GSDC_ADAPTER_UNKNOWN');
+      assert.ok(e.message.includes('codex'));
     }
-    const reInitResult = await installer.init({
-      agent: 'antigravity',
-      frameworkVersion: '1.3.0'
-    });
-    assert.strictEqual(reInitResult.agentSkillsInstalled, 4, 'Should re-install all 4 skills');
-    assert.ok(
-      fs.existsSync(path.join(tempProjectDir, '.agents/skills/canva-mockup/SKILL.md')),
-      'canva-mockup skill should be restored'
+    assert.strictEqual(threwCodex, true, 'Should throw for codex agent in Phase 2');
+    process.chdir(tempProjectDir);
+
+    console.log('  - Test 13: init --agent opencode throws error (P1-1 fix: fail fast)...');
+    const opencodeDir = makeTempDir('./temp-opencode');
+    process.chdir(opencodeDir);
+    let threwOpencode = false;
+    try {
+      await installer.init({ agent: 'opencode', frameworkVersion: '1.3.0' });
+    } catch (e) {
+      threwOpencode = true;
+      assert.strictEqual(e.code, 'GSDC_ADAPTER_UNKNOWN');
+      assert.ok(e.message.includes('opencode'));
+    }
+    assert.strictEqual(threwOpencode, true, 'Should throw for opencode agent in Phase 2');
+    process.chdir(tempProjectDir);
+
+    console.log('  - Test 14: init --agent antigravity rejects unmanaged SKILL.md conflict (P1-2 fix)...');
+    const conflictDir = makeTempDir('./temp-conflict');
+    process.chdir(conflictDir);
+    fs.mkdirSync(path.join(conflictDir, '.agents/skills/canva-mockup'), { recursive: true });
+    fs.writeFileSync(
+      path.join(conflictDir, '.agents/skills/canva-mockup/SKILL.md'),
+      '---\nname: user-custom\n---\nUser custom skill content.',
+      'utf8'
     );
 
-    console.log('  - Test 12: SKILL.md trigger-based description rendering...');
+    let threwConflict = false;
+    try {
+      await installer.init({ agent: 'antigravity', frameworkVersion: '1.3.0' });
+    } catch (e) {
+      threwConflict = true;
+      assert.strictEqual(e.code, 'GSDC_INIT_CONFLICT', 'Should throw conflict for unmanaged SKILL.md');
+      assert.strictEqual(e.exitCode, 11);
+      assert.ok(e.details.conflictFile.includes('canva-mockup'));
+    }
+    assert.strictEqual(threwConflict, true, 'Should detect conflict on unmanaged .agents/skills file');
+    process.chdir(tempProjectDir);
+
+    console.log('  - Test 15: init --agent antigravity detects modified managed SKILL.md (P1-2 fix)...');
+    const existingSkillPath = path.join(tempProjectDir, '.agents/skills/canva-mockup/SKILL.md');
+    if (!fs.existsSync(existingSkillPath)) {
+      fs.mkdirSync(path.dirname(existingSkillPath), { recursive: true });
+      const reInitForSetup = await installer.init({ agent: 'antigravity', frameworkVersion: '1.3.0' });
+      assert.strictEqual(reInitForSetup.agentSkillsInstalled, 4);
+    }
+    const originalContent = fs.readFileSync(existingSkillPath, 'utf8');
+    fs.writeFileSync(existingSkillPath, originalContent + '\n<!-- USER MODIFIED -->', 'utf8');
+
+    let threwModified = false;
+    try {
+      await installer.init({ agent: 'antigravity', frameworkVersion: '1.3.0' });
+    } catch (e) {
+      threwModified = true;
+      assert.strictEqual(e.code, 'GSDC_INIT_CONFLICT');
+      assert.ok(e.details.conflictFile.includes('canva-mockup'));
+    }
+    assert.strictEqual(threwModified, true, 'Should detect locally modified managed skill file');
+
+    console.log('  - Test 16: Re-init with --force-all overwrites modified skills...');
+    const forceResult = await installer.init({
+      agent: 'antigravity',
+      forceAll: true,
+      frameworkVersion: '1.3.0'
+    });
+    assert.strictEqual(forceResult.agentSkillsInstalled, 4);
+    const restoredContent = fs.readFileSync(existingSkillPath, 'utf8');
+    assert.ok(!restoredContent.includes('USER MODIFIED'), 'Force-all should overwrite modified skill');
+
+    console.log('  - Test 17: SKILL.md trigger-based description rendering...');
     const cap = {
       id: 'custom-skill',
       title: 'Custom Skill',
@@ -172,9 +259,9 @@ async function run() {
     if (fs.existsSync(tempProjectDir)) {
       fs.rmSync(tempProjectDir, { recursive: true, force: true });
     }
-    const noSkillDir = path.resolve(__dirname, './temp-no-skills');
-    if (fs.existsSync(noSkillDir)) {
-      fs.rmSync(noSkillDir, { recursive: true, force: true });
+    for (const name of ['./temp-no-skills', './temp-no-agent', './temp-unknown', './temp-codex', './temp-opencode', './temp-conflict']) {
+      const dir = path.resolve(__dirname, name);
+      if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
     }
   }
 }
