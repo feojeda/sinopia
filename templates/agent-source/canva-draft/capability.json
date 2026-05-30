@@ -1,0 +1,9 @@
+{
+  "id": "canva-draft",
+  "title": "Canva Draft",
+  "invocation": "/canva-draft [ID]",
+  "description": "Create the draft phase in Canva using Spec-Driven Development.",
+  "triggers": ["/canva-draft"],
+  "category": "gsd-canva",
+  "supportedAgents": ["antigravity", "codex", "opencode"]
+}

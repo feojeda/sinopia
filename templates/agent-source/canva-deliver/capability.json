@@ -1,0 +1,9 @@
+{
+  "id": "canva-deliver",
+  "title": "Canva Deliver",
+  "invocation": "/canva-deliver [ID]",
+  "description": "Export and deliver final assets from a Canva design.",
+  "triggers": ["/canva-deliver"],
+  "category": "gsd-canva",
+  "supportedAgents": ["antigravity", "codex", "opencode"]
+}
