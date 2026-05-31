@@ -34,11 +34,11 @@ async function run() {
     });
 
     assert.strictEqual(codexResult.initialized, true);
-    assert.strictEqual(codexResult.agentsInstalled.codex.count, 4);
+    assert.strictEqual(codexResult.agentsInstalled.codex.count, 5);
     assert.strictEqual(codexResult.agentsInstalled.codex.target, '.codex/commands');
     assert.strictEqual(codexResult.agentSkillsInstalled, undefined, 'No antigravity compat fields for codex-only');
 
-    const expectedCommands = ['canva-mockup', 'canva-draft', 'canva-refine', 'canva-deliver'];
+    const expectedCommands = ['canva-mockup', 'canva-draft', 'canva-refine', 'canva-deliver', 'gesso'];
     for (const cmdId of expectedCommands) {
       const cmdPath = path.join(tempProjectDir, '.codex', 'commands', `${cmdId}.md`);
       assert.ok(fs.existsSync(cmdPath), `Codex command should exist: ${cmdId}.md`);
@@ -61,7 +61,7 @@ async function run() {
     });
 
     assert.strictEqual(opencodeResult.initialized, true);
-    assert.strictEqual(opencodeResult.agentsInstalled.opencode.count, 4);
+    assert.strictEqual(opencodeResult.agentsInstalled.opencode.count, 5);
     assert.strictEqual(opencodeResult.agentsInstalled.opencode.target, '.opencode/commands');
 
     for (const cmdId of expectedCommands) {
@@ -89,11 +89,11 @@ async function run() {
     assert.ok(allResult.agentsInstalled.antigravity, 'Should have antigravity installed');
     assert.ok(allResult.agentsInstalled.codex, 'Should have codex installed');
     assert.ok(allResult.agentsInstalled.opencode, 'Should have opencode installed');
-    assert.strictEqual(allResult.agentsInstalled.antigravity.count, 4);
-    assert.strictEqual(allResult.agentsInstalled.codex.count, 4);
-    assert.strictEqual(allResult.agentsInstalled.opencode.count, 4);
+    assert.strictEqual(allResult.agentsInstalled.antigravity.count, 5);
+    assert.strictEqual(allResult.agentsInstalled.codex.count, 5);
+    assert.strictEqual(allResult.agentsInstalled.opencode.count, 5);
 
-    assert.strictEqual(allResult.agentSkillsInstalled, 4, 'Phase 2 backward compat for --agent all');
+    assert.strictEqual(allResult.agentSkillsInstalled, 5, 'Phase 2 backward compat for --agent all');
     assert.strictEqual(allResult.agentTarget, '.agents/skills', 'Phase 2 backward compat for --agent all');
 
     for (const cmdId of expectedCommands) {
@@ -119,9 +119,9 @@ async function run() {
     assert.ok(manifest.agents.antigravity);
     assert.ok(manifest.agents.codex);
     assert.ok(manifest.agents.opencode);
-    assert.strictEqual(manifest.agents.antigravity.files.length, 4);
-    assert.strictEqual(manifest.agents.codex.files.length, 4);
-    assert.strictEqual(manifest.agents.opencode.files.length, 4);
+    assert.strictEqual(manifest.agents.antigravity.files.length, 5);
+    assert.strictEqual(manifest.agents.codex.files.length, 5);
+    assert.strictEqual(manifest.agents.opencode.files.length, 5);
     assert.strictEqual(manifest.agents.antigravity.adapter, 'antigravity-skill-v1');
     assert.strictEqual(manifest.agents.codex.adapter, 'codex-command-v1');
     assert.strictEqual(manifest.agents.opencode.adapter, 'opencode-command-v1');
@@ -130,7 +130,7 @@ async function run() {
     const agentFiles = manifest.files.filter(f =>
       f.target.startsWith('.agents/') || f.target.startsWith('.codex/') || f.target.startsWith('.opencode/')
     );
-    assert.strictEqual(agentFiles.length, 12, 'Should have 12 agent file entries (4 per adapter)');
+    assert.strictEqual(agentFiles.length, 15, 'Should have 12 agent file entries (4 per adapter)');
 
     process.chdir(tempProjectDir);
 
@@ -139,8 +139,8 @@ async function run() {
     const codexDoctor = await installer.doctor({ agent: 'codex' });
     assert.strictEqual(codexDoctor.healthy, true);
     assert.strictEqual(codexDoctor.agentDetails.agents.codex.allPresent, true);
-    assert.strictEqual(codexDoctor.agentDetails.agents.codex.validCount, 4);
-    assert.strictEqual(codexDoctor.agentDetails.agents.codex.expectedCount, 4);
+    assert.strictEqual(codexDoctor.agentDetails.agents.codex.validCount, 5);
+    assert.strictEqual(codexDoctor.agentDetails.agents.codex.expectedCount, 5);
     assert.strictEqual(codexDoctor.agentDetails.agents.codex.missing, undefined);
 
     console.log('  - Test 6: doctor --agent opencode validates expected command files...');
@@ -212,9 +212,9 @@ async function run() {
       frameworkVersion: '1.3.0'
     });
     assert.strictEqual(forceResult.initialized, true);
-    assert.strictEqual(forceResult.agentsInstalled.codex.count, 4);
-    assert.strictEqual(forceResult.agentsInstalled.opencode.count, 4);
-    assert.strictEqual(forceResult.agentsInstalled.antigravity.count, 4);
+    assert.strictEqual(forceResult.agentsInstalled.codex.count, 5);
+    assert.strictEqual(forceResult.agentsInstalled.opencode.count, 5);
+    assert.strictEqual(forceResult.agentsInstalled.antigravity.count, 5);
 
     const codexMockupContent = fs.readFileSync(
       path.join(conflictDir, '.codex/commands/canva-mockup.md'), 'utf8'
@@ -240,7 +240,7 @@ async function run() {
       frameworkVersion: '1.3.0'
     });
     assert.strictEqual(adoptResult.initialized, true);
-    assert.strictEqual(adoptResult.agentsInstalled.codex.count, 4);
+    assert.strictEqual(adoptResult.agentsInstalled.codex.count, 5);
 
     const preserved = fs.readFileSync(
       path.join(adoptDir, '.codex/commands/canva-mockup.md'), 'utf8'

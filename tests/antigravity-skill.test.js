@@ -35,12 +35,12 @@ async function run() {
     });
 
     assert.strictEqual(initResult.initialized, true);
-    assert.strictEqual(initResult.agentsInstalled.antigravity.count, 4, 'Should install 4 skills');
+    assert.strictEqual(initResult.agentsInstalled.antigravity.count, 5, 'Should install 5 skills');
     assert.strictEqual(initResult.agentsInstalled.antigravity.target, '.agents/skills');
-    assert.strictEqual(initResult.agentSkillsInstalled, 4, 'Phase 2 backward compat: agentSkillsInstalled');
+    assert.strictEqual(initResult.agentSkillsInstalled, 5, 'Phase 2 backward compat: agentSkillsInstalled');
     assert.strictEqual(initResult.agentTarget, '.agents/skills', 'Phase 2 backward compat: agentTarget');
 
-    const expectedSkills = ['canva-mockup', 'canva-draft', 'canva-refine', 'canva-deliver'];
+    const expectedSkills = ['canva-mockup', 'canva-draft', 'canva-refine', 'canva-deliver', 'gesso'];
     for (const skillId of expectedSkills) {
       const skillPath = path.join(tempProjectDir, '.agents', 'skills', skillId, 'SKILL.md');
       assert.ok(fs.existsSync(skillPath), `Skill file should exist: ${skillId}/SKILL.md`);
@@ -94,13 +94,13 @@ async function run() {
     assert.ok(manifest.agents, 'Manifest should have agents section');
     assert.ok(manifest.agents.antigravity, 'Manifest should have antigravity agent');
     const skillEntries = manifest.agents.antigravity.files;
-    assert.strictEqual(skillEntries.length, 4, 'Manifest should have 4 skill entries for antigravity');
+    assert.strictEqual(skillEntries.length, 5, 'Manifest should have 4 skill entries for antigravity');
     for (const entry of skillEntries) {
       assert.ok(entry.sha256, `Skill entry ${entry.target} should have sha256`);
       assert.strictEqual(entry.managed, true, `Skill entry ${entry.target} should be managed`);
     }
     const allSkillEntries = manifest.files.filter(f => f.target.startsWith('.agents/skills/'));
-    assert.strictEqual(allSkillEntries.length, 4, 'Flat files list should have 4 skill entries');
+    assert.strictEqual(allSkillEntries.length, 5, 'Flat files list should have 5 skill entries');
 
     console.log('  - Test 6: doctor --agent antigravity validates official skills...');
     const doctorResult = await installer.doctor({ agent: 'antigravity' });
@@ -112,8 +112,8 @@ async function run() {
     const agDet = doctorResult.agentDetails.agents.antigravity;
     assert.strictEqual(agDet.legacyCommands, true);
     assert.strictEqual(agDet.targetDir, true);
-    assert.strictEqual(agDet.expectedCount, 4);
-    assert.strictEqual(agDet.validCount, 4);
+    assert.strictEqual(agDet.expectedCount, 5);
+    assert.strictEqual(agDet.validCount, 5);
     assert.strictEqual(agDet.allPresent, true);
     assert.strictEqual(agDet.missing, undefined);
 
@@ -142,7 +142,7 @@ async function run() {
     } catch (e) {
       threwNoSkills = true;
       assert.strictEqual(e.code, 'GSDC_AGENT_SKILLS_MISSING');
-      assert.strictEqual(e.details.antigravity.missing.length, 4);
+      assert.strictEqual(e.details.antigravity.missing.length, 5);
       assert.strictEqual(e.details.antigravity.validCount, 0);
     }
     assert.strictEqual(threwNoSkills, true, 'Should throw when no skills installed');
@@ -188,7 +188,7 @@ async function run() {
     process.chdir(codexDir);
     const codexResult = await installer.init({ agent: 'codex', frameworkVersion: '1.3.0' });
     assert.strictEqual(codexResult.initialized, true);
-    assert.strictEqual(codexResult.agentsInstalled.codex.count, 4);
+    assert.strictEqual(codexResult.agentsInstalled.codex.count, 5);
     assert.ok(fs.existsSync(path.join(codexDir, '.codex/commands/canva-mockup.md')));
     process.chdir(tempProjectDir);
 
@@ -197,7 +197,7 @@ async function run() {
     process.chdir(opencodeDir);
     const opencodeResult = await installer.init({ agent: 'opencode', frameworkVersion: '1.3.0' });
     assert.strictEqual(opencodeResult.initialized, true);
-    assert.strictEqual(opencodeResult.agentsInstalled.opencode.count, 4);
+    assert.strictEqual(opencodeResult.agentsInstalled.opencode.count, 5);
     assert.ok(fs.existsSync(path.join(opencodeDir, '.opencode/commands/canva-mockup.md')));
     process.chdir(tempProjectDir);
 
@@ -228,7 +228,7 @@ async function run() {
     if (!fs.existsSync(existingSkillPath)) {
       fs.mkdirSync(path.dirname(existingSkillPath), { recursive: true });
       const reInitForSetup = await installer.init({ agent: 'antigravity', frameworkVersion: '1.3.0' });
-      assert.strictEqual(reInitForSetup.agentSkillsInstalled, 4);
+      assert.strictEqual(reInitForSetup.agentSkillsInstalled, 5);
     }
     const originalContent = fs.readFileSync(existingSkillPath, 'utf8');
     fs.writeFileSync(existingSkillPath, originalContent + '\n<!-- USER MODIFIED -->', 'utf8');
@@ -249,8 +249,8 @@ async function run() {
       forceAll: true,
       frameworkVersion: '1.3.0'
     });
-    assert.strictEqual(forceResult.agentsInstalled.antigravity.count, 4);
-    assert.strictEqual(forceResult.agentSkillsInstalled, 4, 'Phase 2 backward compat after force-all');
+    assert.strictEqual(forceResult.agentsInstalled.antigravity.count, 5);
+    assert.strictEqual(forceResult.agentSkillsInstalled, 5, 'Phase 2 backward compat after force-all');
     const restoredContent = fs.readFileSync(existingSkillPath, 'utf8');
     assert.ok(!restoredContent.includes('USER MODIFIED'), 'Force-all should overwrite modified skill');
 
@@ -272,8 +272,8 @@ async function run() {
       frameworkVersion: '1.3.0'
     });
     assert.strictEqual(adoptResult.initialized, true);
-    assert.strictEqual(adoptResult.agentsInstalled.antigravity.count, 4);
-    assert.strictEqual(adoptResult.agentSkillsInstalled, 4, 'Phase 2 backward compat after adopt');
+    assert.strictEqual(adoptResult.agentsInstalled.antigravity.count, 5);
+    assert.strictEqual(adoptResult.agentSkillsInstalled, 5, 'Phase 2 backward compat after adopt');
 
     const preserved = fs.readFileSync(
       path.join(adoptDir, '.agents/skills/canva-mockup/SKILL.md'),

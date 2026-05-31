@@ -105,6 +105,102 @@ async function run() {
     !content.includes('.antigravity/commands/') || content.includes('legacy') || content.includes('deprecated'),
     'Instructions must not describe .antigravity/commands/ as Antigravity 2.0 primary surface'
   );
+
+  // --- Gesso Phase 4 tests ---
+
+  console.log('  - Phase 4.13: Capability catalog includes gesso...');
+  const gessoCapEntry = caps.find(c => c.capability && c.capability.id === 'gesso');
+  assert.ok(gessoCapEntry, 'gesso capability must be in the catalog');
+  assert.ok(gessoCapEntry.capability.title, 'gesso must have a title');
+  assert.ok(gessoCapEntry.capability.invocation, 'gesso must have an invocation');
+  assert.ok(Array.isArray(gessoCapEntry.capability.triggers), 'gesso must have triggers array');
+  assert.strictEqual(gessoCapEntry.capability.triggers.length, 5, 'gesso must have 5 triggers');
+
+  console.log('  - Phase 4.14: Gesso triggers include all 5 multilingual aliases...');
+  const expectedTriggers = ['/lienzo-en-blanco', '/blank-canvas', '/tela-bianca', '/gesso', '/canva-blank-canvas'];
+  for (const t of expectedTriggers) {
+    assert.ok(gessoCapEntry.capability.triggers.includes(t), `gesso triggers must include ${t}`);
+  }
+
+  console.log('  - Phase 4.15: Gesso instructions contain required CLI commands...');
+  const gessoContent = gessoCapEntry.instructions;
+  assert.ok(gessoContent.includes('gesso create'), 'Must reference gsd-canva gesso create');
+  assert.ok(gessoContent.includes('gesso append-turn'), 'Must reference gsd-canva gesso append-turn');
+  assert.ok(gessoContent.includes('gesso update-notes'), 'Must reference gsd-canva gesso update-notes');
+  assert.ok(gessoContent.includes('gesso write'), 'Must reference gsd-canva gesso write');
+  assert.ok(gessoContent.includes('gesso confirm'), 'Must reference gsd-canva gesso confirm');
+
+  console.log('  - Phase 4.16: Gesso instructions require preflight CLI...');
+  assert.ok(gessoContent.includes('gsd-canva --help'), 'Must require preflight gsd-canva --help');
+
+  console.log('  - Phase 4.17: Gesso instructions prohibit direct JSON edits...');
+  assert.ok(
+    gessoContent.includes('PROHIBIDO') && gessoContent.includes('lienzo.json'),
+    'Must prohibit editing lienzo.json directly'
+  );
+  assert.ok(
+    gessoContent.includes('PROHIBIDO') && gessoContent.includes('sesion.json'),
+    'Must prohibit editing sesion.json directly'
+  );
+
+  console.log('  - Phase 4.18: Gesso instructions require explicit user approval before confirm...');
+  assert.ok(
+    gessoContent.includes('PROHIBIDO') && gessoContent.includes('mockup') && gessoContent.includes('gesso confirm'),
+    'Must prohibit mockup before gesso confirm'
+  );
+  assert.ok(
+    gessoContent.includes('aprobación') || gessoContent.includes('explícita') || gessoContent.includes('confirmación'),
+    'Must require explicit user approval'
+  );
+
+  console.log('  - Phase 4.19: Gesso instructions prohibit autopopulating technical decisions...');
+  assert.ok(
+    gessoContent.includes('PROHIBIDO') && gessoContent.includes('autopoblar'),
+    'Must prohibit autopopulating technical decisions'
+  );
+  assert.ok(
+    gessoContent.includes('decisions.json'),
+    'Must reference decisions.json prohibition'
+  );
+
+  console.log('  - Phase 4.20: Gesso instructions prohibit Studi or Opere...');
+  assert.ok(
+    gessoContent.includes('PROHIBIDO') && gessoContent.includes('Studi') || gessoContent.includes('Opere'),
+    'Must prohibit creating Studi or Opere'
+  );
+
+  console.log('  - Phase 4.21: Gesso instructions offer methodology selection...');
+  const methodologies = ['Socrática', 'Creative Brief', 'Jobs-to-be-Done', 'Design Thinking', '5W + 1H'];
+  for (const m of methodologies) {
+    assert.ok(gessoContent.includes(m), `Must mention methodology: ${m}`);
+  }
+
+  console.log('  - Phase 4.22: Rendered Antigravity skill contains all 5 gesso aliases as triggers...');
+  const antigravityGesso = antigravitySkill.render(gessoCapEntry.capability, gessoCapEntry.instructions);
+  for (const t of expectedTriggers) {
+    assert.ok(antigravityGesso.includes(t), `Antigravity skill must include trigger ${t}`);
+  }
+
+  console.log('  - Phase 4.23: Rendered Codex command contains gesso invocation...');
+  const codexGesso = codexCommand.render(gessoCapEntry.capability, gessoCapEntry.instructions);
+  assert.ok(codexGesso.includes('/lienzo-en-blanco'), 'Codex command must include gesso invocation');
+  assert.ok(codexGesso.includes('gesso create'), 'Codex command must include gesso create');
+
+  console.log('  - Phase 4.24: Rendered OpenCode command contains gesso invocation...');
+  const opencodeGesso = opencodeCommand.render(gessoCapEntry.capability, gessoCapEntry.instructions);
+  assert.ok(opencodeGesso.includes('/lienzo-en-blanco'), 'OpenCode command must include gesso invocation');
+  assert.ok(opencodeGesso.includes('gesso create'), 'OpenCode command must include gesso create');
+
+  console.log('  - Phase 4.25: Gesso instructions mention transition to canva-mockup after confirmation...');
+  assert.ok(
+    gessoContent.includes('/canva-mockup'),
+    'Must offer transition to /canva-mockup after confirmation'
+  );
+
+  console.log('  - Phase 4.26: Existing canva-mockup capability unchanged...');
+  const canvaContent = gessoCapEntry ? caps.find(c => c.capability.id === 'canva-mockup') : null;
+  assert.ok(canvaContent, 'canva-mockup capability must still load');
+  assert.ok(canvaContent.instructions.includes('plan questions'), 'canva-mockup instructions must still contain plan questions');
 }
 
 module.exports = { run };

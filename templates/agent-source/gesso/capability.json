@@ -1,0 +1,9 @@
+{
+  "id": "gesso",
+  "title": "Gesso / Lienzo en Blanco",
+  "invocation": "/lienzo-en-blanco <nombre opcional>",
+  "description": "Guide Phase 0 creative exploration and produce an approved Gesso for Sinopia.",
+  "triggers": ["/lienzo-en-blanco", "/blank-canvas", "/tela-bianca", "/gesso", "/canva-blank-canvas"],
+  "category": "sinopia",
+  "supportedAgents": ["antigravity", "codex", "opencode"]
+}
