@@ -457,7 +457,8 @@ socratic
     console.log('  - Gesso Test 20: confirm rejects invalid or placeholder gesso.md...');
     const gConfirm = await gessoManager.create({ name: 'Confirm Test', methodology: 'socratic', language: 'es' });
 
-    // Reject placeholder (default template with {{name}} / {{methodology}})
+    // Reject placeholder (default template contains placeholder text like
+    // '(Por definir durante la conversación)' and 'Este documento es un placeholder')
     try {
       await gessoManager.confirm(gConfirm.lienzoId);
       assert.fail('Debería haber fallado por gesso.md placeholder');
