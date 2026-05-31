@@ -113,6 +113,17 @@ async function runAll() {
     failed = true;
   }
 
+  try {
+    console.log('--- 10. Pruebas de v1.4 Phase 4: Agent-Source Interactive Mockup Flow ---');
+    const phase4Tests = require('./phase4-agent-source-interactive.test');
+    await phase4Tests.run();
+    console.log('🟢 Pruebas de v1.4 Phase 4 completadas con éxito.\n');
+  } catch (err) {
+    console.error('🔴 FAILED: Pruebas de v1.4 Phase 4 fallaron.');
+    console.error(err);
+    failed = true;
+  }
+
   // Limpieza final
   if (fs.existsSync(tempDir)) {
     fs.rmSync(tempDir, { recursive: true, force: true });

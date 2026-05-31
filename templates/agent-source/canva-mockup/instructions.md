@@ -22,34 +22,99 @@ Cuando el usuario invoque este comando, debes ejecutar de forma obligatoria los 
 *   Anota el **ID de tres dígitos** retornado (ej: `001`) y la ruta del plan (`canva-plans/plan_001_<nombre_diseño>/`). Toda tu actividad se restringirá estrictamente a esta carpeta. El plan iniciará en el estado `mockup:questions_pending`.
 
 ### 2. Levantamiento de Requisitos, Investigación y Confirmación (YIELD GATE OBLIGATORIO)
-*   **Análisis del Contexto del Usuario**:
-    *   Analiza la instrucción inicial del usuario cuidadosamente y clasifica el nivel de contexto recibido:
-        *   **Contexto Completo**: El usuario proveyó vertical, audiencia, formato, paleta, copy y CTA → Pobla esos campos en `decisions.json` de inmediato.
-        *   **Contexto Parcial**: El usuario proveyó algunos datos pero no todos → Pobla los campos conocidos en `decisions.json` y deja los demás como strings vacíos (`""`).
-        *   **Sin Contexto**: El usuario solo proveyó un nombre genérico (ej: `test2`) → Deja TODOS los campos de `decisions.json` como strings vacíos (`""`).
-    *   💡 **REGLA DE SUGERENCIAS**: Puedes diseñar y proponer opciones estéticas o creativas sugeridas al usuario en el chat, marcándolas **explícitamente como propuestas tentativas no confirmadas**. Sin embargo, está **PROHIBIDO** registrarlas en `decisions.json` o darlas por definitivas en `requerimientos.md` o `investigacion.md` sin el consentimiento explícito del usuario. Los campos desconocidos en los archivos se dejan con los placeholders originales del template hasta que sean validados.
-*   **Poblado Obligatorio de Archivos (decisions.json primero)**:
-    *   Escribe **SIEMPRE** en `decisions.json` primero. Este archivo es la fuente de verdad para el Yield Gate criptográfico. Los archivos Markdown (`requerimientos.md`, `investigacion.md`) se actualizan como espejo de lo que ya está en `decisions.json`.
-    *   Los campos desconocidos en `decisions.json` se dejan como strings vacíos (`""`).
-    *   Los campos desconocidos en los Markdown se dejan con los placeholders originales del template.
-    *   ⚠️ **PROHIBIDO** editar `requerimientos.md` o `investigacion.md` con datos que no estén primero en `decisions.json`.
-    *   Escribe las preguntas faltantes en la sección `Pendientes` de `preguntas.md`.
-*   **Parada Obligatoria (Roadblock)**:
-    1. Presenta en el chat un resumen de: (a) lo que sabes con certeza, (b) opciones tentativas que sugieres, y (c) lo que falta por definir.
-    2. Formula preguntas específicas por cada campo vacío en `decisions.json`.
-    3. Pide confirmación explícita al usuario para congelar el diseño.
-    4. ⚠️ **DETÉN tu generación en el chat inmediatamente**. **PROHIBIDO** generar `mockup.html` o ejecutar comandos de transición de forma autónoma.
-*   **Confirmación de Alineación**:
-    *   Una vez que el usuario responda de conformidad en el chat, actualiza `decisions.json` y `preguntas.md`.
-    *   Ejecuta el comando para registrar la confirmación y calcular el hash de integridad en el CLI:
-        ```bash
-        gsd-canva plan confirm-decisions --id <ID_DE_TRES_DÍGITOS>
-        ```
-    *   Transiciona el estado del plan ejecutando:
-        ```bash
-        gsd-canva plan resolve-questions --id <ID_DE_TRES_DÍGITOS>
-        ```
-    *   El plan avanzará al estado `mockup:ready_for_html`.
+
+⚠️ **REGLA FUNDAMENTAL**: Todas las respuestas del usuario se registran **exclusivamente** a través del CLI. Está **PROHIBIDO** escribir `decisions.json` directamente. El agente nunca edita ese archivo a mano.
+
+#### 2.1 Obtener estado de preguntas
+
+Después de crear el plan, ejecuta inmediatamente:
+
+```bash
+gsd-canva plan questions --id <ID> --json
+```
+
+Esto retorna un JSON estructurado con:
+- `pending`: lista de campos que faltan por responder (cada uno con `id`, `question`, `type`, `options`, `allowCustom`, `required`, `placeholder`).
+- `filled`: lista de campos ya respondidos.
+- `requiredPendingCount`, `optionalPendingCount`, `allQuestionsAddressed`, `confirmed`, `readOnly`, `suggestedAction`.
+
+Si `suggestedAction` es `retry_resolve`, el plan ya fue confirmado y solo falta ejecutar `resolve-questions`.
+
+#### 2.2 Pre-poblado desde contexto del usuario
+
+Analiza la instrucción inicial del usuario y clasifica el nivel de contexto recibido:
+
+- **Contexto Completo**: El usuario proveyó vertical, audiencia, formato, paleta, copy y CTA → Registra cada campo vía `plan answer`.
+- **Contexto Parcial**: El usuario proveyó algunos datos → Registra los campos conocidos vía `plan answer` y deja los demás pendientes.
+- **Sin Contexto**: El usuario solo proveyó un nombre genérico → No registres nada; procede al flujo de preguntas.
+
+Para cada campo conocido, ejecuta:
+
+```bash
+gsd-canva plan answer --id <ID> --field <campo> --value "<valor>"
+```
+
+💡 **REGLA DE SUGERENCIAS**: Puedes proponer opciones estéticas o creativas en el chat, marcándolas **explícitamente como propuestas tentativas no confirmadas**. Sin embargo, está **PROHIBIDO** registrar propuestas en el plan sin el consentimiento explícito del usuario.
+
+#### 2.3 Flujo interactivo de preguntas
+
+Vuelve a ejecutar `plan questions --id <ID> --json` para ver qué campos quedan pendientes.
+
+**Si el entorno soporta UI interactiva nativa (Antigravity):**
+- Presenta las preguntas pendientes usando la interfaz nativa del entorno.
+- Cada respuesta del usuario se guarda con `plan answer`.
+
+**Si el entorno NO soporta UI interactiva nativa (fallback textual):**
+- Presenta las preguntas pendientes **de una en una** o en un bloque agrupado, según prefieras.
+- Para campos `type: "choice"` con opciones, lista las opciones numeradas.
+- Para campos `type: "choice"` con `allowCustom: true`, indica explícitamente que el usuario puede escribir una opción personalizada además de las listadas.
+- Para campos `type: "text"`, muestra el placeholder como guía.
+- Cada respuesta del usuario se guarda con `plan answer`.
+
+Repite hasta que `requiredPendingCount` sea `0`.
+
+#### 2.4 Pregunta opcional de assets
+
+Una vez que todos los campos requeridos estén respondidos, pregunta explícitamente al usuario:
+
+> "¿Tienes assets (logo, imágenes, íconos) que quieras incluir? Puedes indicarlos o decir 'no' para omitir."
+
+Registra la respuesta con `plan answer --id <ID> --field assets --value "<valor>"` (usar `""` para omitir).
+
+Esto marca `allQuestionsAddressed` como `true`.
+
+#### 2.5 Resumen y confirmación final
+
+Presenta al usuario un resumen de todas las decisiones registradas y pide su aprobación explícita para congelar el diseño.
+
+⚠️ **REGLAS DE CONFIRMACIÓN**:
+- La confirmación se parsea **únicamente** del último mensaje del usuario en el turno de aprobación final.
+- **PROHIBIDO** usar las palabras "confirmo" o "confirmado" en tus mensajes de estado o relleno antes del paso de confirmación final. Usa alternativas como: "registrado", "anotado", "listo para revisar", "guardado".
+- ⚠️ **DETÉN tu generación en el chat inmediatamente**. **PROHIBIDO** generar `mockup.html` o ejecutar comandos de transición de forma autónoma sin confirmación.
+
+Una vez que el usuario confirme explícitamente:
+
+```bash
+gsd-canva plan confirm-decisions --id <ID>
+```
+
+Luego transiciona el estado:
+
+```bash
+gsd-canva plan resolve-questions --id <ID>
+```
+
+El plan avanzará al estado `mockup:ready_for_html`.
+
+#### 2.6 Cambios post-confirmación
+
+Si el usuario solicita cambios **después** de haber confirmado, ejecuta:
+
+```bash
+gsd-canva plan reset-confirmation --id <ID>
+```
+
+Esto revierte la confirmación, limpia el hash de integridad y devuelve el plan a `mockup:questions_pending`, permitiendo responder campos nuevamente con `plan answer`. Los campos requeridos se preservan; los opcionales se limpian. Luego repite el flujo desde 2.3.
 
 ### 3. Propuesta Visual (Wireframing)
 *   Sigue la guía del flujo de trabajo en `.gsd-canva/workflows/layout-conceptualization.md`.
