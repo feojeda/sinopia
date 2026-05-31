@@ -630,6 +630,187 @@ socratic
       assert.strictEqual(errParsed.code, 'GSDC_GESSO_INVALID_STATE');
     }
 
+    // ==========================================
+    // PHASE 3 TESTS: Gesso to Plan Link
+    // ==========================================
+
+    // TEST 26: Approved Gesso links to an existing plan
+    console.log('  - Gesso Test 26: Approved Gesso links to an existing plan...');
+    const g26 = await gessoManager.create({ name: 'Link Test', methodology: 'socratic', language: 'es' });
+    const validFilePath26 = writeTempFile('valid-gesso26.md', validGessoContent);
+    await gessoManager.write(g26.lienzoId, validFilePath26);
+    await gessoManager.confirm(g26.lienzoId, { by: 'tester' });
+    const p26 = await planManager.create({ name: 'Plan for Link' });
+    const linkRes26 = await gessoManager.linkPlan(g26.lienzoId, p26.planId);
+    assert.strictEqual(linkRes26.linked, true);
+    assert.strictEqual(linkRes26.lienzoId, g26.lienzoId);
+    assert.strictEqual(linkRes26.planId, p26.planId);
+
+    // TEST 27: Link writes linkedPlanId to lienzo.json
+    console.log('  - Gesso Test 27: Link writes linkedPlanId to lienzo.json...');
+    const lienzoJson27 = JSON.parse(fs.readFileSync(path.join(g26.lienzoDir, 'lienzo.json'), 'utf8'));
+    assert.strictEqual(lienzoJson27.linkedPlanId, p26.planId);
+    assert.strictEqual(lienzoJson27.status, 'con_mockup');
+    assert.strictEqual(lienzoJson27.history[lienzoJson27.history.length - 1].action, 'link-plan');
+
+    // TEST 28: Link writes sourceLienzoId to plan.json
+    console.log('  - Gesso Test 28: Link writes sourceLienzoId to plan.json...');
+    const planJson28 = JSON.parse(fs.readFileSync(path.join(p26.planDir, 'plan.json'), 'utf8'));
+    assert.strictEqual(planJson28.sourceLienzoId, g26.lienzoId);
+    assert.strictEqual(planJson28.history[planJson28.history.length - 1].action, 'linked-gesso');
+
+    // TEST 29: Link does not modify decisions.json
+    console.log('  - Gesso Test 29: Link does not modify decisions.json...');
+    const decisionsPath29 = path.join(p26.planDir, 'decisions.json');
+    const decisionsBefore29 = fs.readFileSync(decisionsPath29, 'utf8');
+    const linkRes29 = await gessoManager.linkPlan(g26.lienzoId, p26.planId);
+    assert.strictEqual(linkRes29.idempotent, true);
+    const decisionsAfter29 = fs.readFileSync(decisionsPath29, 'utf8');
+    assert.strictEqual(decisionsBefore29, decisionsAfter29);
+
+    // TEST 30: Link does not transition plan phase/status
+    console.log('  - Gesso Test 30: Link does not transition plan phase/status...');
+    assert.strictEqual(planJson28.phase, 'mockup');
+    assert.strictEqual(planJson28.status, 'questions_pending');
+
+    // TEST 31: Link rejects en_blanco lienzo
+    console.log('  - Gesso Test 31: Link rejects en_blanco lienzo...');
+    const g31 = await gessoManager.create({ name: 'En Blanco Link Test', methodology: 'socratic', language: 'es' });
+    const p31 = await planManager.create({ name: 'Plan for En Blanco' });
+    try {
+      await gessoManager.linkPlan(g31.lienzoId, p31.planId);
+      assert.fail('Debería haber fallado por lienzo en_blanco');
+    } catch (err) {
+      assert.strictEqual(err.code, 'GSDC_GESSO_INVALID_STATE');
+      assert.strictEqual(err.exitCode, 32);
+    }
+
+    // TEST 32: Link rejects tampered gesso.md
+    console.log('  - Gesso Test 32: Link rejects tampered gesso.md...');
+    const g32 = await gessoManager.create({ name: 'Tampered Link Test', methodology: 'socratic', language: 'es' });
+    const validFilePath32 = writeTempFile('valid-gesso32.md', validGessoContent);
+    await gessoManager.write(g32.lienzoId, validFilePath32);
+    await gessoManager.confirm(g32.lienzoId, { by: 'tester' });
+    const p32 = await planManager.create({ name: 'Plan for Tampered' });
+    const gessoMdPath32 = path.join(g32.lienzoDir, 'gesso.md');
+    fs.writeFileSync(gessoMdPath32, fs.readFileSync(gessoMdPath32, 'utf8') + '\nTampered!', 'utf8');
+    try {
+      await gessoManager.linkPlan(g32.lienzoId, p32.planId);
+      assert.fail('Debería haber fallado por gesso.md alterado');
+    } catch (err) {
+      assert.strictEqual(err.code, 'GSDC_GESSO_CHANGED_AFTER_CONFIRMATION');
+      assert.strictEqual(err.exitCode, 35);
+    }
+
+    // TEST 33: Link rejects missing plan
+    console.log('  - Gesso Test 33: Link rejects missing plan...');
+    const g33 = await gessoManager.create({ name: 'Missing Plan Test', methodology: 'socratic', language: 'es' });
+    const validFilePath33 = writeTempFile('valid-gesso33.md', validGessoContent);
+    await gessoManager.write(g33.lienzoId, validFilePath33);
+    await gessoManager.confirm(g33.lienzoId, { by: 'tester' });
+    try {
+      await gessoManager.linkPlan(g33.lienzoId, '999');
+      assert.fail('Debería haber fallado por plan inexistente');
+    } catch (err) {
+      assert.strictEqual(err.code, 'GSDC_GESSO_LINK_FAILED');
+      assert.strictEqual(err.exitCode, 36);
+    }
+
+    // TEST 34: Link rejects linking to a second different plan
+    console.log('  - Gesso Test 34: Link rejects linking to a second different plan...');
+    const g34 = await gessoManager.create({ name: 'Second Plan Test', methodology: 'socratic', language: 'es' });
+    const validFilePath34 = writeTempFile('valid-gesso34.md', validGessoContent);
+    await gessoManager.write(g34.lienzoId, validFilePath34);
+    await gessoManager.confirm(g34.lienzoId, { by: 'tester' });
+    const p34a = await planManager.create({ name: 'Plan A' });
+    const p34b = await planManager.create({ name: 'Plan B' });
+    await gessoManager.linkPlan(g34.lienzoId, p34a.planId);
+    try {
+      await gessoManager.linkPlan(g34.lienzoId, p34b.planId);
+      assert.fail('Debería haber fallado por lienzo ya vinculado');
+    } catch (err) {
+      assert.strictEqual(err.code, 'GSDC_GESSO_LINK_FAILED');
+      assert.strictEqual(err.exitCode, 36);
+    }
+
+    // TEST 35: Link rejects linking a plan already linked to a different lienzo
+    console.log('  - Gesso Test 35: Link rejects plan already linked to different lienzo...');
+    const g35a = await gessoManager.create({ name: 'Lienzo A', methodology: 'socratic', language: 'es' });
+    const g35b = await gessoManager.create({ name: 'Lienzo B', methodology: 'socratic', language: 'es' });
+    const validFilePath35a = writeTempFile('valid-gesso35a.md', validGessoContent);
+    const validFilePath35b = writeTempFile('valid-gesso35b.md', validGessoContent);
+    await gessoManager.write(g35a.lienzoId, validFilePath35a);
+    await gessoManager.write(g35b.lienzoId, validFilePath35b);
+    await gessoManager.confirm(g35a.lienzoId, { by: 'tester' });
+    await gessoManager.confirm(g35b.lienzoId, { by: 'tester' });
+    const p35 = await planManager.create({ name: 'Plan Shared' });
+    await gessoManager.linkPlan(g35a.lienzoId, p35.planId);
+    try {
+      await gessoManager.linkPlan(g35b.lienzoId, p35.planId);
+      assert.fail('Debería haber fallado por plan ya vinculado');
+    } catch (err) {
+      assert.strictEqual(err.code, 'GSDC_GESSO_LINK_FAILED');
+      assert.strictEqual(err.exitCode, 36);
+    }
+
+    // TEST 36: Existing /canva-mockup direct flow still works without sourceLienzoId
+    console.log('  - Gesso Test 36: Existing plan flow works without sourceLienzoId...');
+    const p36 = await planManager.create({ name: 'Direct Flow Plan' });
+    assert.strictEqual(p36.plan.phase, 'mockup');
+    assert.strictEqual(p36.plan.status, 'questions_pending');
+    assert.ok(!p36.plan.sourceLienzoId, 'Plan sin vincular no debe tener sourceLienzoId');
+    const q36 = await planManager.questions(p36.planId);
+    assert.strictEqual(q36.editable, true);
+    const a36 = await planManager.answer(p36.planId, 'vertical', 'SaaS / Producto Digital');
+    assert.strictEqual(a36.field, 'vertical');
+    assert.strictEqual(a36.value, 'SaaS / Producto Digital');
+    const status36 = await planManager.status(p36.planId);
+    assert.strictEqual(status36.plan.phase, 'mockup');
+    assert.strictEqual(status36.plan.status, 'questions_pending');
+
+    // TEST 37: CLI link-plan --json works
+    console.log('  - Gesso Test 37: CLI link-plan --json works...');
+    const g37 = await gessoManager.create({ name: 'CLI Link Test', methodology: 'socratic', language: 'es' });
+    const validFilePath37 = writeTempFile('valid-gesso37.md', validGessoContent);
+    await gessoManager.write(g37.lienzoId, validFilePath37);
+    await gessoManager.confirm(g37.lienzoId, { by: 'cli-tester' });
+    const p37 = await planManager.create({ name: 'Plan for CLI Link' });
+    const linkJson37 = execSync(`node "${cliBin}" gesso link-plan --id ${g37.lienzoId} --plan ${p37.planId} --json`, {
+      cwd: process.cwd(), encoding: 'utf8'
+    });
+    const parsedLink37 = JSON.parse(linkJson37.trim());
+    assert.strictEqual(parsedLink37.ok, true);
+    assert.strictEqual(parsedLink37.data.linked, true);
+    assert.strictEqual(parsedLink37.data.lienzoId, g37.lienzoId);
+    assert.strictEqual(parsedLink37.data.planId, p37.planId);
+    assert.ok(!parsedLink37.data.data, 'Must not double-wrap data');
+
+    // TEST 38: CLI link-plan --json idempotent
+    console.log('  - Gesso Test 38: CLI link-plan --json idempotent...');
+    const linkJson38 = execSync(`node "${cliBin}" gesso link-plan --id ${g37.lienzoId} --plan ${p37.planId} --json`, {
+      cwd: process.cwd(), encoding: 'utf8'
+    });
+    const parsedLink38 = JSON.parse(linkJson38.trim());
+    assert.strictEqual(parsedLink38.ok, true);
+    assert.strictEqual(parsedLink38.data.idempotent, true);
+
+    // TEST 39: CLI link-plan errors in JSON mode
+    console.log('  - Gesso Test 39: CLI link-plan errors in JSON mode...');
+    const g39 = await gessoManager.create({ name: 'CLI Error Test', methodology: 'socratic', language: 'es' });
+    const validFilePath39 = writeTempFile('valid-gesso39.md', validGessoContent);
+    await gessoManager.write(g39.lienzoId, validFilePath39);
+    await gessoManager.confirm(g39.lienzoId, { by: 'tester' });
+    try {
+      execSync(`node "${cliBin}" gesso link-plan --id ${g39.lienzoId} --plan 999 --json`, {
+        cwd: process.cwd(), encoding: 'utf8'
+      });
+      assert.fail('Debería haber fallado CLI con plan inexistente');
+    } catch (cliErr) {
+      const errParsed = JSON.parse(cliErr.stderr.trim());
+      assert.strictEqual(errParsed.ok, false);
+      assert.strictEqual(errParsed.code, 'GSDC_GESSO_LINK_FAILED');
+    }
+
   } finally {
     process.chdir(originalCwd);
   }
