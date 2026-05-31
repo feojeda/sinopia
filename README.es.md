@@ -4,6 +4,10 @@
   <img src="docs/images/sinopia_logo.png" alt="Sinopia Logo" width="300" />
 </p>
 
+<p align="center">
+  <a href="README.md">English</a> | <b>Español</b>
+</p>
+
 **El trazo determinista bajo el diseño asistido por IA.**
 
 > *"La inteligencia artificial puede alucinar el trazo. Sinopia asegura la intención."*

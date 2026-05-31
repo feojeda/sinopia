@@ -4,6 +4,10 @@
   <img src="docs/images/sinopia_logo.png" alt="Sinopia Logo" width="300" />
 </p>
 
+<p align="center">
+  <b>English</b> | <a href="README.es.md">Español</a>
+</p>
+
 **The deterministic underdrawing for AI-assisted design.**
 
 > *"AI can hallucinate the drawing. Sinopia protects the intent."*
