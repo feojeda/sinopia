@@ -653,6 +653,7 @@ ${chalk.bold.yellow('📊 ESTADO DEL LIENZO ' + options.id)}
   - Estado: ${chalk.cyan(result.lienzo.status)}
   - Metodología: ${result.lienzo.methodology}
   - Idioma: ${result.lienzo.language}
+  - Plan vinculado: ${result.lienzo.linkedPlanId ? chalk.cyan(result.lienzo.linkedPlanId) : chalk.gray('N/A')}
   - Creado: ${result.lienzo.timestamps.created}
   - Actualizado: ${result.lienzo.timestamps.updated}
 `;
@@ -685,7 +686,8 @@ gessoCmd
           humanMsg += '  No se encontraron lienzos.';
         } else {
           result.lienzos.forEach(l => {
-            humanMsg += `  - ${chalk.yellow(l.id)}: ${chalk.bold(l.name)} [Fase: ${chalk.cyan(l.phase)} | Estado: ${chalk.cyan(l.status)} | ${l.methodology} | ${l.language}]\n`;
+            const linkedInfo = l.linkedPlanId ? chalk.cyan(l.linkedPlanId) : chalk.gray('N/A');
+            humanMsg += `  - ${chalk.yellow(l.id)}: ${chalk.bold(l.name)} [Fase: ${chalk.cyan(l.phase)} | Estado: ${chalk.cyan(l.status)} | Plan: ${linkedInfo} | ${l.methodology} | ${l.language}]\n`;
           });
         }
       }
@@ -833,6 +835,37 @@ gessoCmd
         err.code || 'GSDC_GESSO_CHANGED_AFTER_CONFIRMATION',
         err.message || 'Fallo al verificar el Gesso.',
         err.exitCode || 35,
+        err.details || {}
+      );
+    }
+  });
+
+// gesso link-plan
+gessoCmd
+  .command('link-plan')
+  .description('Vincula un lienzo aprobado a un plan de mockup existente')
+  .requiredOption('--id <id>', 'ID del lienzo de tres dígitos')
+  .requiredOption('--plan <planId>', 'ID del plan de tres dígitos')
+  .option('--json', 'Salida estructurada en JSON puro')
+  .action(async (options) => {
+    try {
+      const gessoManager = require('../lib/gesso-manager');
+      const result = await gessoManager.linkPlan(options.id, options.plan);
+      let humanMsg = '';
+      if (!options.json) {
+        const chalk = require('chalk');
+        if (result.idempotent) {
+          humanMsg = chalk.green(`✔ Lienzo ${options.id} ya estaba vinculado al plan ${options.plan}.`);
+        } else {
+          humanMsg = chalk.green(`✔ Lienzo ${options.id} vinculado al plan ${options.plan}. Estado: con_mockup.`);
+        }
+      }
+      handleSuccess(result, humanMsg);
+    } catch (err) {
+      handleError(
+        err.code || 'GSDC_GESSO_LINK_FAILED',
+        err.message || 'Fallo al vincular el lienzo con el plan.',
+        err.exitCode || 36,
         err.details || {}
       );
     }
