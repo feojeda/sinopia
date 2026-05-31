@@ -25,12 +25,12 @@ function makeCapability(overrides = {}) {
 const SAMPLE_INSTRUCTIONS = '## Step 1\n\nDo the thing.\n';
 
 async function run() {
-  console.log('  - Test 1: Loading all four capabilities...');
+  console.log('  - Test 1: Loading all five capabilities...');
   const caps = adapters.loadAllCapabilities(SOURCE_ROOT);
-  assert.strictEqual(caps.length, 4, 'Should load exactly 4 capabilities');
+  assert.strictEqual(caps.length, 5, 'Should load exactly 5 capabilities');
 
   const ids = caps.map(c => c.capability.id).sort();
-  assert.deepStrictEqual(ids, ['canva-deliver', 'canva-draft', 'canva-mockup', 'canva-refine']);
+  assert.deepStrictEqual(ids, ['canva-deliver', 'canva-draft', 'canva-mockup', 'canva-refine', 'gesso']);
 
   for (const c of caps) {
     assert.ok(c.capability.id, `Capability ${c.capability.id} should have an id`);

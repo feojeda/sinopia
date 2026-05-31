@@ -51,15 +51,15 @@ async function run() {
 
     const initAg = await installer.init({ agent: 'antigravity', frameworkVersion: '1.3.0' });
     assert.strictEqual(initAg.schemaVersion, 2);
-    assert.strictEqual(initAg.agentsInstalled.antigravity.count, 4);
-    assert.strictEqual(initAg.agentSkillsInstalled, 4);
+    assert.strictEqual(initAg.agentsInstalled.antigravity.count, 5);
+    assert.strictEqual(initAg.agentSkillsInstalled, 5);
     assert.strictEqual(initAg.agentTarget, '.agents/skills');
 
     const m2 = JSON.parse(fs.readFileSync('.gsd-canva/manifest.json', 'utf8'));
     assert.strictEqual(m2.schemaVersion, 2);
     assert.ok(m2.agents.antigravity);
     assert.strictEqual(m2.agents.antigravity.adapter, 'antigravity-skill-v1');
-    assert.strictEqual(m2.agents.antigravity.files.length, 4);
+    assert.strictEqual(m2.agents.antigravity.files.length, 5);
     assert.ok(
       m2.agents.antigravity.files.every(f => f.target.startsWith('.agents/skills/')),
       'All antigravity files should be under .agents/skills/'
@@ -70,7 +70,7 @@ async function run() {
     const t3a = makeTempDir('t3-codex');
     process.chdir(t3a);
     const codexRes = await installer.init({ agent: 'codex', frameworkVersion: '1.3.0' });
-    assert.strictEqual(codexRes.agentsInstalled.codex.count, 4);
+    assert.strictEqual(codexRes.agentsInstalled.codex.count, 5);
     assert.strictEqual(codexRes.agentSkillsInstalled, undefined);
     const m3a = JSON.parse(fs.readFileSync('.gsd-canva/manifest.json', 'utf8'));
     assert.strictEqual(m3a.schemaVersion, 2);
@@ -81,7 +81,7 @@ async function run() {
     const t3b = makeTempDir('t3-opencode');
     process.chdir(t3b);
     const ocRes = await installer.init({ agent: 'opencode', frameworkVersion: '1.3.0' });
-    assert.strictEqual(ocRes.agentsInstalled.opencode.count, 4);
+    assert.strictEqual(ocRes.agentsInstalled.opencode.count, 5);
     const m3b = JSON.parse(fs.readFileSync('.gsd-canva/manifest.json', 'utf8'));
     assert.strictEqual(m3b.schemaVersion, 2);
     assert.ok(m3b.agents.opencode);
@@ -91,24 +91,24 @@ async function run() {
     const t3c = makeTempDir('t3-all');
     process.chdir(t3c);
     const allRes = await installer.init({ agent: 'all', frameworkVersion: '1.3.0' });
-    assert.strictEqual(allRes.agentsInstalled.antigravity.count, 4);
-    assert.strictEqual(allRes.agentsInstalled.codex.count, 4);
-    assert.strictEqual(allRes.agentsInstalled.opencode.count, 4);
-    assert.strictEqual(allRes.agentSkillsInstalled, 4);
+    assert.strictEqual(allRes.agentsInstalled.antigravity.count, 5);
+    assert.strictEqual(allRes.agentsInstalled.codex.count, 5);
+    assert.strictEqual(allRes.agentsInstalled.opencode.count, 5);
+    assert.strictEqual(allRes.agentSkillsInstalled, 5);
     assert.strictEqual(allRes.agentTarget, '.agents/skills');
     const m3c = JSON.parse(fs.readFileSync('.gsd-canva/manifest.json', 'utf8'));
     assert.strictEqual(m3c.schemaVersion, 2);
     assert.ok(m3c.agents.antigravity);
     assert.ok(m3c.agents.codex);
     assert.ok(m3c.agents.opencode);
-    assert.strictEqual(m3c.agents.antigravity.files.length, 4);
-    assert.strictEqual(m3c.agents.codex.files.length, 4);
-    assert.strictEqual(m3c.agents.opencode.files.length, 4);
+    assert.strictEqual(m3c.agents.antigravity.files.length, 5);
+    assert.strictEqual(m3c.agents.codex.files.length, 5);
+    assert.strictEqual(m3c.agents.opencode.files.length, 5);
 
     const flatAgentFiles = m3c.files.filter(f =>
       f.target.startsWith('.agents/') || f.target.startsWith('.codex/') || f.target.startsWith('.opencode/')
     );
-    assert.strictEqual(flatAgentFiles.length, 12, 'Flat files should have 12 agent entries');
+    assert.strictEqual(flatAgentFiles.length, 15, 'Flat files should have 12 agent entries');
     process.chdir(originalCwd);
 
     console.log('  - Test 4: Upgrade regenerates managed Antigravity skills...');
@@ -229,9 +229,9 @@ async function run() {
       frameworkVersion: '1.3.0'
     });
     assert.strictEqual(adoptRes.initialized, true);
-    assert.strictEqual(adoptRes.agentsInstalled.antigravity.count, 4);
-    assert.strictEqual(adoptRes.agentsInstalled.codex.count, 4);
-    assert.strictEqual(adoptRes.agentsInstalled.opencode.count, 4);
+    assert.strictEqual(adoptRes.agentsInstalled.antigravity.count, 5);
+    assert.strictEqual(adoptRes.agentsInstalled.codex.count, 5);
+    assert.strictEqual(adoptRes.agentsInstalled.opencode.count, 5);
 
     for (const cap of caps) {
       const agContent = fs.readFileSync(
@@ -252,9 +252,9 @@ async function run() {
 
     const adoptManifest = JSON.parse(fs.readFileSync('.gsd-canva/manifest.json', 'utf8'));
     assert.strictEqual(adoptManifest.schemaVersion, 2);
-    assert.strictEqual(adoptManifest.agents.antigravity.files.length, 4);
-    assert.strictEqual(adoptManifest.agents.codex.files.length, 4);
-    assert.strictEqual(adoptManifest.agents.opencode.files.length, 4);
+    assert.strictEqual(adoptManifest.agents.antigravity.files.length, 5);
+    assert.strictEqual(adoptManifest.agents.codex.files.length, 5);
+    assert.strictEqual(adoptManifest.agents.opencode.files.length, 5);
     for (const f of adoptManifest.agents.antigravity.files) {
       assert.strictEqual(f.managed, true, `Adopted file ${f.target} should be managed`);
     }
@@ -404,7 +404,7 @@ async function run() {
     const m11after = JSON.parse(fs.readFileSync('.gsd-canva/manifest.json', 'utf8'));
     assert.strictEqual(m11after.schemaVersion, 2);
     assert.ok(m11after.agents.antigravity, 'Antigravity agent should persist after migration');
-    assert.strictEqual(m11after.agents.antigravity.files.length, 4, 'All 4 skill entries should persist');
+    assert.strictEqual(m11after.agents.antigravity.files.length, 5, 'All 4 skill entries should persist');
 
     for (const entry of m11after.agents.antigravity.files) {
       assert.ok(entry.target.startsWith('.agents/skills/'), `Entry ${entry.target} should be under .agents/skills/`);
@@ -438,7 +438,7 @@ async function run() {
       agent: 'codex',
       frameworkVersion: '1.3.0'
     });
-    assert.strictEqual(adopt12.agentsInstalled.codex.count, 4);
+    assert.strictEqual(adopt12.agentsInstalled.codex.count, 5);
     for (const cap of caps) {
       const c = fs.readFileSync(path.join(t12, '.codex/commands', `${cap.capability.id}.md`), 'utf8');
       assert.ok(c.includes('Adopted Codex'), `Codex ${cap.capability.id} content should be preserved`);
@@ -460,7 +460,7 @@ async function run() {
     const m13 = JSON.parse(fs.readFileSync('.gsd-canva/manifest.json', 'utf8'));
     assert.ok(m13.agents.antigravity);
     assert.strictEqual(m13.agents.antigravity.files.length, 0, 'Antigravity agent should have no files');
-    assert.strictEqual(m13.agents.codex.files.length, 4, 'Codex agent should have 4 files');
+    assert.strictEqual(m13.agents.codex.files.length, 5, 'Codex agent should have 4 files');
     process.chdir(originalCwd);
 
     console.log('  - Test 14: Force-all creates backup for modified managed agent files...');
@@ -479,7 +479,7 @@ async function run() {
       frameworkVersion: '1.3.0'
     });
     assert.strictEqual(force14.initialized, true);
-    assert.strictEqual(force14.agentsInstalled.antigravity.count, 4);
+    assert.strictEqual(force14.agentsInstalled.antigravity.count, 5);
 
     const restored = fs.readFileSync(skill14, 'utf8');
     assert.ok(!restored.includes('MODIFIED BY USER'), 'Force-all should overwrite modified file');
@@ -540,24 +540,24 @@ async function run() {
     process.chdir(t16);
 
     const initAll = await installer.init({ agent: 'all', frameworkVersion: '1.3.0' });
-    assert.strictEqual(initAll.agentsInstalled.antigravity.count, 4);
-    assert.strictEqual(initAll.agentsInstalled.codex.count, 4);
-    assert.strictEqual(initAll.agentsInstalled.opencode.count, 4);
+    assert.strictEqual(initAll.agentsInstalled.antigravity.count, 5);
+    assert.strictEqual(initAll.agentsInstalled.codex.count, 5);
+    assert.strictEqual(initAll.agentsInstalled.opencode.count, 5);
 
     const initCodex = await installer.init({ agent: 'codex', frameworkVersion: '1.3.0' });
-    assert.strictEqual(initCodex.agentsInstalled.codex.count, 4);
+    assert.strictEqual(initCodex.agentsInstalled.codex.count, 5);
 
     const m16 = JSON.parse(fs.readFileSync('.gsd-canva/manifest.json', 'utf8'));
     assert.strictEqual(m16.schemaVersion, 2);
     assert.ok(m16.agents.antigravity, 'Antigravity agent should survive partial re-init');
     assert.ok(m16.agents.opencode, 'OpenCode agent should survive partial re-init');
-    assert.strictEqual(m16.agents.antigravity.files.length, 4, 'Antigravity files should survive');
-    assert.strictEqual(m16.agents.opencode.files.length, 4, 'OpenCode files should survive');
+    assert.strictEqual(m16.agents.antigravity.files.length, 5, 'Antigravity files should survive');
+    assert.strictEqual(m16.agents.opencode.files.length, 5, 'OpenCode files should survive');
 
     const agFiles = m16.files.filter(f => f.target.startsWith('.agents/skills/'));
     const ocFiles = m16.files.filter(f => f.target.startsWith('.opencode/commands/'));
-    assert.strictEqual(agFiles.length, 4, 'Flat files should preserve antigravity entries');
-    assert.strictEqual(ocFiles.length, 4, 'Flat files should preserve opencode entries');
+    assert.strictEqual(agFiles.length, 5, 'Flat files should preserve antigravity entries');
+    assert.strictEqual(ocFiles.length, 5, 'Flat files should preserve opencode entries');
 
     assert.ok(
       fs.existsSync(path.join(t16, '.agents/skills/canva-mockup/SKILL.md')),
@@ -619,7 +619,7 @@ async function run() {
     assert.strictEqual(up18.upgraded, true);
 
     const m18after = JSON.parse(fs.readFileSync('.gsd-canva/manifest.json', 'utf8'));
-    assert.strictEqual(m18after.agents.opencode.files.length, 4, 'Should adopt 4 opencode files');
+    assert.strictEqual(m18after.agents.opencode.files.length, 5, 'Should adopt 4 opencode files');
 
     for (const f of m18after.agents.opencode.files) {
       assert.strictEqual(f.managed, true);
@@ -653,7 +653,7 @@ async function run() {
     assert.strictEqual(up19.upgraded, true);
 
     const m19after = JSON.parse(fs.readFileSync('.gsd-canva/manifest.json', 'utf8'));
-    assert.strictEqual(m19after.agents.antigravity.files.length, 4, 'Should register 4 antigravity files');
+    assert.strictEqual(m19after.agents.antigravity.files.length, 5, 'Should register 4 antigravity files');
 
     for (const f of m19after.agents.antigravity.files) {
       assert.strictEqual(f.managed, true);
