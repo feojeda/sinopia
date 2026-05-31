@@ -758,6 +758,86 @@ gessoCmd
     }
   });
 
+// gesso write
+gessoCmd
+  .command('write')
+  .description('Escribe o reemplaza gesso.md desde un archivo fuente validado')
+  .requiredOption('--id <id>', 'ID del lienzo de tres dígitos')
+  .requiredOption('--file <path>', 'Ruta al archivo fuente del Gesso')
+  .option('--json', 'Salida estructurada en JSON puro')
+  .action(async (options) => {
+    try {
+      const gessoManager = require('../lib/gesso-manager');
+      const result = await gessoManager.write(options.id, options.file);
+      let humanMsg = '';
+      if (!options.json) {
+        const chalk = require('chalk');
+        humanMsg = chalk.green(`✔ Lienzo ${options.id}: gesso.md escrito desde ${path.basename(options.file)}.`);
+      }
+      handleSuccess(result, humanMsg);
+    } catch (err) {
+      handleError(
+        err.code || 'GSDC_GESSO_INVALID_ARTIFACT',
+        err.message || 'Fallo al escribir gesso.md.',
+        err.exitCode || 34,
+        err.details || {}
+      );
+    }
+  });
+
+// gesso confirm
+gessoCmd
+  .command('confirm')
+  .description('Valida gesso.md, calcula hash y confirma el Gesso')
+  .requiredOption('--id <id>', 'ID del lienzo de tres dígitos')
+  .option('--by <nombre>', 'Nombre del confirmador', 'user')
+  .option('--json', 'Salida estructurada en JSON puro')
+  .action(async (options) => {
+    try {
+      const gessoManager = require('../lib/gesso-manager');
+      const result = await gessoManager.confirm(options.id, { by: options.by });
+      let humanMsg = '';
+      if (!options.json) {
+        const chalk = require('chalk');
+        humanMsg = chalk.green(`✔ Lienzo ${options.id}: Gesso confirmado y congelado con hash.`);
+      }
+      handleSuccess(result, humanMsg);
+    } catch (err) {
+      handleError(
+        err.code || 'GSDC_GESSO_INVALID_STATE',
+        err.message || 'Fallo al confirmar el Gesso.',
+        err.exitCode || 32,
+        err.details || {}
+      );
+    }
+  });
+
+// gesso verify
+gessoCmd
+  .command('verify')
+  .description('Verifica que gesso.md no haya sido modificado desde la confirmación')
+  .requiredOption('--id <id>', 'ID del lienzo de tres dígitos')
+  .option('--json', 'Salida estructurada en JSON puro')
+  .action(async (options) => {
+    try {
+      const gessoManager = require('../lib/gesso-manager');
+      const result = await gessoManager.verify(options.id);
+      let humanMsg = '';
+      if (!options.json) {
+        const chalk = require('chalk');
+        humanMsg = chalk.green(`✔ Lienzo ${options.id}: Hash de Gesso verificado correctamente.`);
+      }
+      handleSuccess(result, humanMsg);
+    } catch (err) {
+      handleError(
+        err.code || 'GSDC_GESSO_CHANGED_AFTER_CONFIRMATION',
+        err.message || 'Fallo al verificar el Gesso.',
+        err.exitCode || 35,
+        err.details || {}
+      );
+    }
+  });
+
 // ==========================================
 // GRUPO DE COMANDOS: template
 // ==========================================

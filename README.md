@@ -162,3 +162,14 @@ Sinopia is the conceptual and architectural evolution of `gsd-canva`. Currently,
 *   We are actively implementing the custom conversational skills for our assistants: **Francesco**, **Giulio**, and **Salai**.
 
 > "The AI can paint the picture. Sinopia safeguards your original vision."
+
+---
+
+## Catálogo Oficial de Errores
+
+| Code | Exit | Description |
+| :--- | :---: | :--- |
+| `GSDC_INVALID_FIELD` | 22 | Invalid field value or missing required field. |
+| `GSDC_DECISIONS_LOCKED` | 23 | Attempted to modify decisions after confirmation. |
+| `GSDC_INVALID_CHOICE_VALUE` | 26 | Selected value is not in the allowed choices list. |
+| `GSDC_STALE_MOCKUP` | 27 | mockup.html exists from a previous confirmation cycle. |
