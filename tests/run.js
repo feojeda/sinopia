@@ -3,7 +3,7 @@ const fs = require('fs');
 
 async function runAll() {
   console.log('\n==================================================');
-  console.log('🧪 INICIANDO SUITE DE PRUEBAS DE GSD-CANVA (FASE 4)');
+  console.log('🧪 INICIANDO SUITE DE PRUEBAS DE GSD-CANVA (FASE 5)');
   console.log('==================================================\n');
 
   // Limpiar directorio temporal antes de empezar
@@ -120,6 +120,17 @@ async function runAll() {
     console.log('🟢 Pruebas de v1.4 Phase 4 completadas con éxito.\n');
   } catch (err) {
     console.error('🔴 FAILED: Pruebas de v1.4 Phase 4 fallaron.');
+    console.error(err);
+    failed = true;
+  }
+
+  try {
+    console.log('--- 11. Pruebas de v1.4 Phase 5: E2E Integration, Docs, Error Catalog ---');
+    const phase5Tests = require('./phase5-e2e-integration.test');
+    await phase5Tests.run();
+    console.log('🟢 Pruebas de v1.4 Phase 5 completadas con éxito.\n');
+  } catch (err) {
+    console.error('🔴 FAILED: Pruebas de v1.4 Phase 5 fallaron.');
     console.error(err);
     failed = true;
   }
