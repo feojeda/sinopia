@@ -80,6 +80,17 @@ async function runAll() {
     failed = true;
   }
 
+  try {
+    console.log('--- 7. Pruebas de v1.4 Phase 1: Field Registry and Decisions ---');
+    const phase1Tests = require('./phase1-field-registry.test');
+    await phase1Tests.run();
+    console.log('🟢 Pruebas de v1.4 Phase 1 completadas con éxito.\n');
+  } catch (err) {
+    console.error('🔴 FAILED: Pruebas de v1.4 Phase 1 fallaron.');
+    console.error(err);
+    failed = true;
+  }
+
   // Limpieza final
   if (fs.existsSync(tempDir)) {
     fs.rmSync(tempDir, { recursive: true, force: true });
