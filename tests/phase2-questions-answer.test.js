@@ -189,6 +189,50 @@ async function run() {
     const q7 = await planManager.questions(plan4.planId);
     assert.strictEqual(q7.readOnly, true);
 
+    console.log('  - Phase 2.19: allowCustom: false choice validation rejects unlisted values...');
+    const origCta = planManager.FIELD_REGISTRY.find(f => f.id === 'cta');
+    const origAllowCustom = origCta.allowCustom;
+    origCta.allowCustom = false;
+    const plan8 = await planManager.create({ name: 'No Custom' });
+    try {
+      await planManager.answer(plan8.planId, 'cta', 'Valor No Listado');
+      assert.fail('Should reject unlisted value when allowCustom is false');
+    } catch (err) {
+      assert.strictEqual(err.code, 'GSDC_INVALID_CHOICE_VALUE');
+      assert.strictEqual(err.exitCode, 26);
+      assert.strictEqual(err.details.reason, 'invalid_choice');
+    } finally {
+      origCta.allowCustom = origAllowCustom;
+    }
+
+    console.log('  - Phase 2.20: plan questions --json output is not double-wrapped...');
+    const plan9 = await planManager.create({ name: 'CLI JSON Test' });
+    const { execSync } = require('child_process');
+    const cliBin = path.resolve(__dirname, '../bin/gsd-canva.js');
+    const jsonOut = execSync(`node "${cliBin}" plan questions --id ${plan9.planId} --json`, {
+      cwd: process.cwd(),
+      env: { ...process.env },
+      encoding: 'utf8'
+    });
+    const parsed = JSON.parse(jsonOut.trim());
+    assert.strictEqual(parsed.ok, true, 'CLI --json must wrap in { ok, data }');
+    assert.ok(parsed.data, 'CLI --json must have data field');
+    assert.strictEqual(parsed.data.planId, plan9.planId);
+    assert.strictEqual(typeof parsed.data.requiredPendingCount, 'number');
+    assert.ok(!parsed.data.data, 'Must not double-wrap data');
+
+    console.log('  - Phase 2.21: plan answer --json output is not double-wrapped...');
+    const ansJson = execSync(`node "${cliBin}" plan answer --id ${plan9.planId} --field vertical --value "Test" --json`, {
+      cwd: process.cwd(),
+      env: { ...process.env },
+      encoding: 'utf8'
+    });
+    const parsedAns = JSON.parse(ansJson.trim());
+    assert.strictEqual(parsedAns.ok, true);
+    assert.strictEqual(parsedAns.data.field, 'vertical');
+    assert.strictEqual(parsedAns.data.value, 'Test');
+    assert.ok(!parsedAns.data.data, 'Must not double-wrap data');
+
   } finally {
     process.chdir(originalCwd);
   }
