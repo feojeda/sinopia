@@ -289,6 +289,66 @@ planCmd
     }
   });
 
+// plan questions
+planCmd
+  .command('questions')
+  .description('Muestra el estado de las preguntas interactivas de un plan')
+  .requiredOption('--id <id>', 'ID del plan secuencial de tres dígitos')
+  .option('--json', 'Salida estructurada en JSON puro')
+  .action(async (options) => {
+    try {
+      const planManager = require('../lib/plan-manager');
+      const result = await planManager.questions(options.id);
+      let humanMsg = '';
+      if (!options.json) {
+        const chalk = require('chalk');
+        humanMsg = `${chalk.bold.yellow('❓ PREGUNTAS DEL PLAN ' + options.id)}\n`;
+        humanMsg += `  Estado: ${chalk.cyan(result.phase + ':' + result.status)}\n`;
+        humanMsg += `  Completados: ${chalk.green(result.filledCount + '/' + result.totalFields)}\n`;
+        humanMsg += `  Requeridos pendientes: ${result.requiredPendingCount > 0 ? chalk.red(result.requiredPendingCount) : chalk.green(0)}\n`;
+        humanMsg += `  Opcionales pendientes: ${chalk.yellow(result.optionalPendingCount)}\n`;
+        humanMsg += `  Editable: ${result.editable ? chalk.green('Sí') : chalk.red('No')}\n`;
+        if (result.pending.length > 0) {
+          humanMsg += `\n  ${chalk.bold('Pendientes:')}\n`;
+          result.pending.forEach(f => {
+            const req = f.required ? chalk.red('*') : chalk.gray('○');
+            humanMsg += `    ${req} ${chalk.bold(f.id)}: ${f.question}\n`;
+          });
+        }
+      }
+      handleSuccess(result, humanMsg);
+    } catch (err) {
+      handleError(err.code || 'GSDC_JSON_PARSE_ERROR', err.message, err.exitCode || 15, err.details || {});
+    }
+  });
+
+// plan answer
+planCmd
+  .command('answer')
+  .description('Guarda la respuesta de un campo del plan de forma atómica')
+  .requiredOption('--id <id>', 'ID del plan secuencial')
+  .requiredOption('--field <campo>', 'Nombre del campo a responder')
+  .requiredOption('--value <valor>', 'Valor de la respuesta')
+  .option('--json', 'Salida estructurada en JSON puro')
+  .action(async (options) => {
+    try {
+      const planManager = require('../lib/plan-manager');
+      const result = await planManager.answer(options.id, options.field, options.value);
+      let humanMsg = '';
+      if (!options.json) {
+        const chalk = require('chalk');
+        humanMsg = chalk.green(`✔ Plan ${options.id}: Campo '${chalk.bold(options.field)}' actualizado a '${chalk.cyan(result.value)}'`);
+        if (result.warning) {
+          humanMsg += chalk.yellow(` [Advertencia: ${result.warning}]`);
+        }
+        humanMsg += `\n  Progreso: ${chalk.green(result.filledCount)} completados, ${result.requiredPendingCount} requeridos pendientes`;
+      }
+      handleSuccess(result, humanMsg);
+    } catch (err) {
+      handleError(err.code || 'GSDC_INVALID_FIELD', err.message, err.exitCode || 22, err.details || {});
+    }
+  });
+
 // plan confirm-decisions
 planCmd
   .command('confirm-decisions')
