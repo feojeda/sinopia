@@ -102,6 +102,17 @@ async function runAll() {
     failed = true;
   }
 
+  try {
+    console.log('--- 9. Pruebas de v1.4 Phase 3: Reset Confirmation, Hash, Stale ---');
+    const phase3Tests = require('./phase3-reset-confirmation.test');
+    await phase3Tests.run();
+    console.log('🟢 Pruebas de v1.4 Phase 3 completadas con éxito.\n');
+  } catch (err) {
+    console.error('🔴 FAILED: Pruebas de v1.4 Phase 3 fallaron.');
+    console.error(err);
+    failed = true;
+  }
+
   // Limpieza final
   if (fs.existsSync(tempDir)) {
     fs.rmSync(tempDir, { recursive: true, force: true });
