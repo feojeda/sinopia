@@ -596,6 +596,169 @@ ${chalk.bold.yellow('📊 ESTADO DEL PLAN ' + options.id)}
   });
 
 // ==========================================
+// GRUPO DE COMANDOS: gesso
+// ==========================================
+const gessoCmd = program.command('gesso').description('Gestiona lienzos de Gesso / Lienzo en Blanco');
+
+// gesso create
+gessoCmd
+  .command('create')
+  .description('Crea un nuevo lienzo en lienzos/')
+  .requiredOption('--name <nombre>', 'Nombre descriptivo del lienzo')
+  .requiredOption('--methodology <metodologia>', 'Metodología de exploración creativa')
+  .requiredOption('--language <idioma>', 'Idioma de la conversación (es, en, it)')
+  .option('--json', 'Salida estructurada en JSON puro')
+  .action(async (options) => {
+    try {
+      const gessoManager = require('../lib/gesso-manager');
+      const result = await gessoManager.create({
+        name: options.name,
+        methodology: options.methodology,
+        language: options.language,
+        json: !!options.json
+      });
+      let humanMsg = '';
+      if (!options.json) {
+        const chalk = require('chalk');
+        humanMsg = chalk.green(`✔ Lienzo `) + chalk.bold(result.lienzoId) + chalk.green(` creado con éxito en: `) + chalk.cyan(result.lienzoDir);
+      }
+      handleSuccess(result, humanMsg);
+    } catch (err) {
+      handleError(
+        err.code || 'GSDC_GESSO_INVALID_STATE',
+        err.message || 'Fallo al crear el lienzo.',
+        err.exitCode || 32,
+        err.details || {}
+      );
+    }
+  });
+
+// gesso status
+gessoCmd
+  .command('status')
+  .description('Muestra el estado detallado de un lienzo específico')
+  .requiredOption('--id <id>', 'ID del lienzo de tres dígitos (ej: 001)')
+  .option('--json', 'Salida estructurada en JSON puro')
+  .action(async (options) => {
+    try {
+      const gessoManager = require('../lib/gesso-manager');
+      const result = await gessoManager.status(options.id);
+      let humanMsg = '';
+      if (!options.json) {
+        const chalk = require('chalk');
+        humanMsg = `
+${chalk.bold.yellow('📊 ESTADO DEL LIENZO ' + options.id)}
+  - Nombre: ${chalk.bold(result.lienzo.name)}
+  - Fase actual: ${chalk.cyan(result.lienzo.phase)}
+  - Estado: ${chalk.cyan(result.lienzo.status)}
+  - Metodología: ${result.lienzo.methodology}
+  - Idioma: ${result.lienzo.language}
+  - Creado: ${result.lienzo.timestamps.created}
+  - Actualizado: ${result.lienzo.timestamps.updated}
+`;
+      }
+      handleSuccess(result, humanMsg);
+    } catch (err) {
+      handleError(
+        err.code || 'GSDC_GESSO_NOT_FOUND',
+        err.message || 'Fallo al obtener estado del lienzo.',
+        err.exitCode || 31,
+        err.details || {}
+      );
+    }
+  });
+
+// gesso list
+gessoCmd
+  .command('list')
+  .description('Lista todos los lienzos locales')
+  .option('--json', 'Salida estructurada en JSON puro')
+  .action(async (options) => {
+    try {
+      const gessoManager = require('../lib/gesso-manager');
+      const result = await gessoManager.list({ json: !!options.json });
+      let humanMsg = '';
+      if (!options.json) {
+        const chalk = require('chalk');
+        humanMsg = `${chalk.bold('🎨 LISTA DE LIENZOS:')}\n`;
+        if (result.lienzos.length === 0) {
+          humanMsg += '  No se encontraron lienzos.';
+        } else {
+          result.lienzos.forEach(l => {
+            humanMsg += `  - ${chalk.yellow(l.id)}: ${chalk.bold(l.name)} [Fase: ${chalk.cyan(l.phase)} | Estado: ${chalk.cyan(l.status)} | ${l.methodology} | ${l.language}]\n`;
+          });
+        }
+      }
+      handleSuccess(result, humanMsg);
+    } catch (err) {
+      handleError(
+        err.code || 'GSDC_GESSO_INVALID_STATE',
+        err.message || 'Fallo al listar los lienzos.',
+        err.exitCode || 32,
+        err.details || {}
+      );
+    }
+  });
+
+// gesso append-turn
+gessoCmd
+  .command('append-turn')
+  .description('Registra un turno conversacional en la sesión del lienzo')
+  .requiredOption('--id <id>', 'ID del lienzo de tres dígitos')
+  .requiredOption('--role <rol>', 'Rol del turno (user, assistant, system)')
+  .requiredOption('--content <contenido>', 'Contenido del turno')
+  .option('--tags <tags>', 'Etiquetas opcionales separadas por coma')
+  .option('--json', 'Salida estructurada en JSON puro')
+  .action(async (options) => {
+    try {
+      const gessoManager = require('../lib/gesso-manager');
+      const tags = options.tags ? options.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
+      const result = await gessoManager.appendTurn(options.id, options.role, options.content, tags);
+      let humanMsg = '';
+      if (!options.json) {
+        const chalk = require('chalk');
+        humanMsg = chalk.green(`✔ Lienzo ${options.id}: Turno #${result.turnCount} agregado con rol '${chalk.bold(options.role)}'`);
+      }
+      handleSuccess(result, humanMsg);
+    } catch (err) {
+      handleError(
+        err.code || 'GSDC_GESSO_INVALID_STATE',
+        err.message || 'Fallo al agregar turno al lienzo.',
+        err.exitCode || 32,
+        err.details || {}
+      );
+    }
+  });
+
+// gesso update-notes
+gessoCmd
+  .command('update-notes')
+  .description('Actualiza una nota de trabajo estructurada del lienzo')
+  .requiredOption('--id <id>', 'ID del lienzo de tres dígitos')
+  .requiredOption('--field <campo>', 'Nombre del campo de notas a actualizar')
+  .requiredOption('--value <valor>', 'Valor de la nota')
+  .option('--json', 'Salida estructurada en JSON puro')
+  .action(async (options) => {
+    try {
+      const gessoManager = require('../lib/gesso-manager');
+      const result = await gessoManager.updateNotes(options.id, options.field, options.value);
+      let humanMsg = '';
+      if (!options.json) {
+        const chalk = require('chalk');
+        humanMsg = chalk.green(`✔ Lienzo ${options.id}: Nota '${chalk.bold(options.field)}' actualizada.`);
+      }
+      handleSuccess(result, humanMsg);
+    } catch (err) {
+      handleError(
+        err.code || 'GSDC_GESSO_INVALID_STATE',
+        err.message || 'Fallo al actualizar notas del lienzo.',
+        err.exitCode || 32,
+        err.details || {}
+      );
+    }
+  });
+
+// ==========================================
 // GRUPO DE COMANDOS: template
 // ==========================================
 const templateCmd = program.command('template').description('Gestiona las plantillas registradas en el sistema');

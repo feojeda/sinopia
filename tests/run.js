@@ -135,6 +135,17 @@ async function runAll() {
     failed = true;
   }
 
+  try {
+    console.log('--- 12. Pruebas de v1.5 Phase 1: Gesso Model and Base CLI ---');
+    const gessoTests = require('./gesso.test');
+    await gessoTests.run();
+    console.log('🟢 Pruebas de v1.5 Phase 1 completadas con éxito.\n');
+  } catch (err) {
+    console.error('🔴 FAILED: Pruebas de v1.5 Phase 1 fallaron.');
+    console.error(err);
+    failed = true;
+  }
+
   // Limpieza final
   if (fs.existsSync(tempDir)) {
     fs.rmSync(tempDir, { recursive: true, force: true });
