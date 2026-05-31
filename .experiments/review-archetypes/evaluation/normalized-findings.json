@@ -1,0 +1,176 @@
+{
+  "summary": {
+    "bestDefault": "scenario-2",
+    "reason": "Scenario 2 adds meaningful Agent UX findings over Scenario 1 while avoiding the heavy duplication and lower score per agent of Scenario 3.",
+    "strongestFinding": "reset-confirmation accepts mockup:pending_approval but does not clearly revert that state to mockup:questions_pending, leaving plan answer blocked and stale mockups potentially approvable."
+  },
+  "scorecard": [
+    {
+      "scenario": "scenario-1",
+      "agents": 3,
+      "validHigh": 2,
+      "validMedium": 4,
+      "validLow": 0,
+      "uniqueValid": 6,
+      "duplicates": 3,
+      "weak": 0,
+      "falsePositives": 0,
+      "score": 23,
+      "scorePerAgent": 7.67
+    },
+    {
+      "scenario": "scenario-2",
+      "agents": 4,
+      "validHigh": 1,
+      "validMedium": 6,
+      "validLow": 1,
+      "uniqueValid": 8,
+      "duplicates": 2,
+      "weak": 0,
+      "falsePositives": 0,
+      "score": 30,
+      "scorePerAgent": 7.5
+    },
+    {
+      "scenario": "scenario-3",
+      "agents": 6,
+      "validHigh": 2,
+      "validMedium": 6,
+      "validLow": 2,
+      "uniqueValid": 10,
+      "duplicates": 7,
+      "weak": 0,
+      "falsePositives": 0,
+      "score": 33,
+      "scorePerAgent": 5.5
+    }
+  ],
+  "findings": {
+    "scenario-1": [
+      {
+        "title": "reset-confirmation pending_approval rollback gap",
+        "severity": "High",
+        "classification": "valid"
+      },
+      {
+        "title": "pending_approval stale artifact can bypass submitMockup validation and proceed to approval",
+        "severity": "High",
+        "classification": "valid"
+      },
+      {
+        "title": "answer sample risks double-wrapped CLI JSON",
+        "severity": "Medium",
+        "classification": "valid"
+      },
+      {
+        "title": "readJsonOrThrow instruction could break tolerant plan list behavior",
+        "severity": "Medium",
+        "classification": "valid"
+      },
+      {
+        "title": "questions lacks consistent read or lock requirement",
+        "severity": "Medium",
+        "classification": "valid"
+      },
+      {
+        "title": "readyToConfirm overclaims resolve-questions readiness",
+        "severity": "Medium",
+        "classification": "valid"
+      }
+    ],
+    "scenario-2": [
+      {
+        "title": "reset-confirmation pending_approval rollback and stale approval risk",
+        "severity": "High",
+        "classification": "valid"
+      },
+      {
+        "title": "CLI contract tests need isolated temp workspaces and cwd restoration",
+        "severity": "Medium",
+        "classification": "valid"
+      },
+      {
+        "title": "CLI JSON shape is ambiguous between manager raw data and CLI wrapper",
+        "severity": "Medium",
+        "classification": "valid"
+      },
+      {
+        "title": "readyToConfirm overclaims resolve-questions readiness",
+        "severity": "Medium",
+        "classification": "valid"
+      },
+      {
+        "title": "numbered choices can save literal numeric input instead of option value",
+        "severity": "Medium",
+        "classification": "valid"
+      },
+      {
+        "title": "optional assets lacks durable declined state",
+        "severity": "Medium",
+        "classification": "valid"
+      },
+      {
+        "title": "Section 2 mockup generation prohibition can conflict with Section 3 after confirmation",
+        "severity": "Medium",
+        "classification": "valid"
+      },
+      {
+        "title": "missing plan reported as GSDC_JSON_PARSE_ERROR gives poor recovery guidance",
+        "severity": "Low",
+        "classification": "valid"
+      }
+    ],
+    "scenario-3": [
+      {
+        "title": "reset-confirmation pending_approval rollback gap blocks editing",
+        "severity": "High",
+        "classification": "valid"
+      },
+      {
+        "title": "pending_approval stale artifact can still be approved without artifact/hash recheck",
+        "severity": "High",
+        "classification": "valid"
+      },
+      {
+        "title": "readJsonOrThrow should not mechanically change tolerant plan list behavior",
+        "severity": "Medium",
+        "classification": "valid"
+      },
+      {
+        "title": "answer operation order should read plan.json before validating state",
+        "severity": "Low",
+        "classification": "valid"
+      },
+      {
+        "title": "readyToConfirm overclaims resolve-questions readiness",
+        "severity": "Medium",
+        "classification": "valid"
+      },
+      {
+        "title": "optional assets lacks durable declined state",
+        "severity": "Medium",
+        "classification": "valid"
+      },
+      {
+        "title": "requiredPendingCount rendering condition can skip optional assets",
+        "severity": "Medium",
+        "classification": "valid"
+      },
+      {
+        "title": "missing plan uses misleading GSDC_JSON_PARSE_ERROR",
+        "severity": "Low",
+        "classification": "valid"
+      },
+      {
+        "title": "answer response shape risks double CLI wrapping",
+        "severity": "Medium",
+        "classification": "valid"
+      },
+      {
+        "title": "CLI tests should assert status, stdout, stderr, and error JSON",
+        "severity": "Medium",
+        "classification": "valid"
+      }
+    ]
+  }
+}

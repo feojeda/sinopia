@@ -1,0 +1,409 @@
+{
+  "meta": {
+    "experiment": "review-strategy/20260530-133002",
+    "target": "docs/PROPOSAL_v1.2_interactive_questions.md",
+    "reviewers": ["pragmatic", "operator", "modeler", "agent-ux"],
+    "date": "2026-05-30",
+    "total_raw_findings": 32,
+    "total_deduplicated": 23
+  },
+  "findings": [
+    {
+      "id": "D1",
+      "title": "GSDC_ARTIFACT_MISSING exit code name collision (exit 20 vs 25)",
+      "severity": "medium",
+      "classification": "valid",
+      "category": "cli-contract",
+      "lines": [40, 419, 426],
+      "description": "The proposal introduces exit code 25 with error name GSDC_ARTIFACT_MISSING for missing artifacts within a plan, but submitMockup() already uses the same name with exit code 20 for missing mockup.html. Error handlers cannot distinguish by code name alone.",
+      "recommendation": "Use a distinct error name for the new case (e.g., GSDC_PLAN_ARTIFACT_MISSING for exit 25) or unify the exit codes.",
+      "sources": [
+        {"reviewer": "pragmatic", "finding_id": "F-01", "status": "first"},
+        {"reviewer": "operator", "finding_id": "OP-01", "status": "duplicate"}
+      ]
+    },
+    {
+      "id": "D2",
+      "title": "resetConfirmation() omits plan.json history entry",
+      "severity": "medium",
+      "classification": "valid",
+      "category": "state",
+      "lines": [221, 229],
+      "description": "All existing state transitions push a history entry to plan.json, but resetConfirmation() does not mention appending to the history array. Breaks auditability invariant.",
+      "recommendation": "Add explicit step to push { action: 'reset-confirmation' } entry to planData.history.",
+      "sources": [
+        {"reviewer": "pragmatic", "finding_id": "F-02", "status": "unique"}
+      ]
+    },
+    {
+      "id": "D3",
+      "title": "No single source of truth for field definitions",
+      "severity": "medium",
+      "classification": "valid",
+      "category": "integrity",
+      "lines": [46, 82, 159, 183],
+      "description": "Field definitions (names, types, required flags, options) are hardcoded separately in questions() JSON output, answer() validation, and getEmptyFields() fieldList parameter. Lists can diverge silently.",
+      "recommendation": "Define a single FIELD_REGISTRY constant used by questions(), answer(), getEmptyFields(), and confirmDecisions().",
+      "sources": [
+        {"reviewer": "pragmatic", "finding_id": "F-03", "status": "first"},
+        {"reviewer": "modeler", "finding_id": "M04", "status": "duplicate"}
+      ]
+    },
+    {
+      "id": "D4",
+      "title": "resetConfirmation() step description omits hashAlgorithm clear",
+      "severity": "low",
+      "classification": "valid",
+      "category": "docs",
+      "lines": [220, 364],
+      "description": "Line 220 lists fields to clear (confirmed, confirmedAt, decisionsHash) but omits hashAlgorithm. Section 8 line 364 states it should be cleared. Implementer following ordered steps literally would miss it.",
+      "recommendation": "Add confirmation.hashAlgorithm = '' to the explicit list at line 220.",
+      "sources": [
+        {"reviewer": "pragmatic", "finding_id": "F-04", "status": "unique"}
+      ]
+    },
+    {
+      "id": "D5",
+      "title": "Section numbering gap (section 9 missing)",
+      "severity": "low",
+      "classification": "valid",
+      "category": "docs",
+      "lines": [366, 368],
+      "description": "Sections numbered 1-8, then jump to section 10, skipping section 9.",
+      "recommendation": "Renumber sections 10→9, 11→10, 12→11.",
+      "sources": [
+        {"reviewer": "pragmatic", "finding_id": "F-05", "status": "first"},
+        {"reviewer": "modeler", "finding_id": "M08", "status": "duplicate"},
+        {"reviewer": "agent-ux", "finding_id": "AU-07", "status": "duplicate"}
+      ]
+    },
+    {
+      "id": "D6",
+      "title": "Breaking change to plan status exit code (15→24) not flagged",
+      "severity": "medium",
+      "classification": "valid",
+      "category": "cli-contract",
+      "lines": [37, 42, 406],
+      "description": "Migration from GSDC_JSON_PARSE_ERROR (exit 15) to GSDC_PLAN_NOT_FOUND (exit 24) for missing plans applies to ALL existing functions. Any external consumer checking exit 15 for plan-not-found silently stops matching.",
+      "recommendation": "Add a Breaking Changes subsection noting exit code 15 will no longer be emitted for missing plans.",
+      "sources": [
+        {"reviewer": "pragmatic", "finding_id": "F-06", "status": "first"},
+        {"reviewer": "modeler", "finding_id": "M02", "status": "duplicate"}
+      ]
+    },
+    {
+      "id": "D7",
+      "title": "Concurrent questions() test is fragile for CI",
+      "severity": "low",
+      "classification": "valid",
+      "category": "testing",
+      "lines": [405],
+      "description": "Testing true concurrency requires precise process timing, inherently flaky in CI environments with variable load.",
+      "recommendation": "Replace with targeted test: verify lock acquire/release, or accept that lock consistency is guaranteed by lock manager tests.",
+      "sources": [
+        {"reviewer": "pragmatic", "finding_id": "F-07", "status": "first"},
+        {"reviewer": "operator", "finding_id": "OP-06", "status": "duplicate"}
+      ]
+    },
+    {
+      "id": "D8",
+      "title": "resetConfirmation() idempotency guard condition ambiguous",
+      "severity": "medium",
+      "classification": "valid",
+      "category": "state",
+      "lines": [217, 229],
+      "description": "No-op guard is 'questions_pending without prior confirmation' but spec only checks state, not state+confirmed compound. If crash occurs after writing plan.json but before clearing decisions.json, re-execution may treat it as no-op, leaving confirmed===true.",
+      "recommendation": "Make compound condition explicit: if (state === 'questions_pending' && confirmed !== true) → no-op; else proceed with cleanup.",
+      "sources": [
+        {"reviewer": "operator", "finding_id": "OP-02", "status": "unique"}
+      ]
+    },
+    {
+      "id": "D9",
+      "title": "resetConfirmation() does not clear optionalAnswered",
+      "severity": "high",
+      "classification": "valid",
+      "category": "state",
+      "lines": [220, 227],
+      "description": "After reset, previously declined optional fields (assets) remain marked as answered. questions() reports optionalPendingCount: 0, hiding assets from interactive flow. User cannot be re-prompted about assets after reset.",
+      "recommendation": "Clear optionalAnswered to {} during resetConfirmation(). Document the chosen behavior.",
+      "sources": [
+        {"reviewer": "operator", "finding_id": "OP-03", "status": "first"},
+        {"reviewer": "modeler", "finding_id": "M01", "status": "duplicate"}
+      ]
+    },
+    {
+      "id": "D10",
+      "title": "questions() rejects valid read in non-questions_pending states",
+      "severity": "medium",
+      "classification": "valid",
+      "category": "ux",
+      "lines": [166, 168],
+      "description": "questions() throws GSDC_INVALID_STATE if not in questions_pending, preventing agents from inspecting decisions after confirmation. Error recovery table doesn't mention reset-confirmation as alternative path.",
+      "recommendation": "Allow read-only mode in ready_for_html/pending_approval, or add plan decisions command for inspection.",
+      "sources": [
+        {"reviewer": "operator", "finding_id": "OP-04", "status": "first"},
+        {"reviewer": "modeler", "finding_id": "M03", "status": "duplicate"},
+        {"reviewer": "agent-ux", "finding_id": "AU-08", "status": "duplicate"}
+      ]
+    },
+    {
+      "id": "D11",
+      "title": "create() initializes hashAlgorithm as v1 in v1.2 code",
+      "severity": "low",
+      "classification": "valid",
+      "category": "docs",
+      "lines": [329, 342],
+      "description": "New plans get sha256-decisions-v1 on creation but v2 on first confirmation. Inconsistent but functionally harmless since initial hash is empty.",
+      "recommendation": "Explicitly update create() to write sha256-decisions-v2, or document that v1 is intentionally kept.",
+      "sources": [
+        {"reviewer": "operator", "finding_id": "OP-05", "status": "unique"}
+      ]
+    },
+    {
+      "id": "D12",
+      "title": "answer() does not update plan.json timestamps or history",
+      "severity": "low",
+      "classification": "valid",
+      "category": "state",
+      "lines": [173, 204],
+      "description": "All other mutating operations update plan.json timestamps and history. answer() only writes decisions.json, leaving no audit trail for individual answer events.",
+      "recommendation": "Update plan.json.updated timestamp on each answer, or document intentional omission.",
+      "sources": [
+        {"reviewer": "operator", "finding_id": "OP-07", "status": "unique"}
+      ]
+    },
+    {
+      "id": "D13",
+      "title": "submitMockup() hash v1→v2 migration not explicitly addressed",
+      "severity": "high",
+      "classification": "valid",
+      "category": "integrity",
+      "lines": [346, 369],
+      "description": "Proposal says '3 functions that validate hash must support both v1 and v2' but only details confirmDecisions() and resolveQuestions() migration. submitMockup() also validates hash and would fail for v1 plans.",
+      "recommendation": "Explicitly state submitMockup() needs v1/v2 dispatch. Add test: v1 fixture → resolve-questions passes → submit-mockup passes.",
+      "sources": [
+        {"reviewer": "modeler", "finding_id": "M05", "status": "unique"}
+      ]
+    },
+    {
+      "id": "D14",
+      "title": "resetConfirmation() mockup rename failure leaves valid mockup",
+      "severity": "low",
+      "classification": "valid",
+      "category": "state",
+      "lines": [219, 228],
+      "description": "If mockup.html rename fails (step 6), plan reverts to questions_pending but retains valid mockup.html. Hash check is the safety net — stale mockup with changed decisions would fail hash validation.",
+      "recommendation": "Acknowledge hash check as safety net. Consider having submitMockup reject stale files explicitly.",
+      "sources": [
+        {"reviewer": "modeler", "finding_id": "M06", "status": "unique"}
+      ]
+    },
+    {
+      "id": "D15",
+      "title": "planState field format inconsistency in questions() output",
+      "severity": "low",
+      "classification": "valid",
+      "category": "cli-contract",
+      "lines": [74],
+      "description": "questions() returns planState as phase:status string, while plan status returns phase and status as separate fields. Inconsistent API shape.",
+      "recommendation": "Use separate phase/status fields consistent with plan status output, or document planState as derived display field.",
+      "sources": [
+        {"reviewer": "modeler", "finding_id": "M07", "status": "unique"}
+      ]
+    },
+    {
+      "id": "D16",
+      "title": "getEmptyFields() placeholder detection uses includes() — overly broad substring matching",
+      "severity": "medium",
+      "classification": "valid",
+      "category": "state",
+      "lines": [48, 55],
+      "description": "val.toUpperCase().includes(p) matches substrings. 'NODO' matches 'TODO', 'PENDIENTE_DE_PAGO' matches 'PENDIENTE'. Pre-existing bug being preserved by extraction.",
+      "recommendation": "Change to exact match (===) or word-boundary matching during helper extraction.",
+      "sources": [
+        {"reviewer": "modeler", "finding_id": "M09", "status": "unique"}
+      ]
+    },
+    {
+      "id": "D17",
+      "title": "answer() accepts placeholder values (by design)",
+      "severity": "low",
+      "classification": "weak",
+      "category": "integrity",
+      "lines": [186],
+      "description": "answer() explicitly does not validate placeholders. Reviewer self-dismissed: layered validation is correct — answer() accepts anything, questions() reports accurately via getEmptyFields(), confirmDecisions() blocks.",
+      "recommendation": "No action needed. Design is correct.",
+      "sources": [
+        {"reviewer": "modeler", "finding_id": "M10", "status": "unique"}
+      ]
+    },
+    {
+      "id": "D18",
+      "title": "Otro (personalizado) absent from JSON options array — rendering protocol undefined",
+      "severity": "medium",
+      "classification": "valid",
+      "category": "ux",
+      "lines": [86, 159, 275, 279],
+      "description": "allowCustom: true flag exists in JSON but 'Otro (personalizado)' is not in the options array. Template requires it. If agent appends synthetic option, numeric mapping is off-by-one from JSON indices.",
+      "recommendation": "Include rendering protocol in JSON: add customFollowUp field or document that allowCustom=true means agent appends synthetic last option with index offset.",
+      "sources": [
+        {"reviewer": "agent-ux", "finding_id": "AU-01", "status": "unique"}
+      ]
+    },
+    {
+      "id": "D19",
+      "title": "Confirmation parsing semantics too vague for reliable agent implementation",
+      "severity": "high",
+      "classification": "valid",
+      "category": "ux",
+      "lines": [313],
+      "description": "Rule 'afirmación sin calificar' is natural-language guidance with no structured enforcement. Agents must classify utterances like 'ok', 'dale', 'sí, todo bien' into binary confirmed/not-confirmed. Different agents will implement differently, creating non-deterministic yield gate behavior.",
+      "recommendation": "Replace with structured protocol: exact trigger phrase (e.g., 'confirmo') or add CLI-level enforcement via confirm-decisions --user-confirmation-text.",
+      "sources": [
+        {"reviewer": "agent-ux", "finding_id": "AU-02", "status": "unique"}
+      ]
+    },
+    {
+      "id": "D20",
+      "title": "Error recovery table omits GSDC_DECISIONS_CHANGED_AFTER_CONFIRMATION (exit 21)",
+      "severity": "medium",
+      "classification": "valid",
+      "category": "ux",
+      "lines": [295, 302],
+      "description": "Exit code 21 (hash mismatch) used in resolveQuestions() and submitMockup() but absent from error recovery table. Agent encountering exit 21 during interactive flow has no recovery instruction.",
+      "recommendation": "Add row: GSDC_DECISIONS_CHANGED_AFTER_CONFIRMATION (21) → reset-confirmation + repeat flow.",
+      "sources": [
+        {"reviewer": "agent-ux", "finding_id": "AU-03", "status": "unique"}
+      ]
+    },
+    {
+      "id": "D21",
+      "title": "reset-confirmation from pending_approval destroys mockup without user-facing warning",
+      "severity": "high",
+      "classification": "valid",
+      "category": "ux",
+      "lines": [218, 219, 319, 324],
+      "description": "User who says 'change the CTA' after seeing mockup has their mockup renamed to .stale with no warning. Template treats minor correction same as full mockup destruction. .stale rename is irreversible in normal flow.",
+      "recommendation": "Add warning step: agent must warn user that mockup will be invalidated before reset-confirmation from ready_for_html/pending_approval.",
+      "sources": [
+        {"reviewer": "agent-ux", "finding_id": "AU-04", "status": "unique"}
+      ]
+    },
+    {
+      "id": "D22",
+      "title": "answer() return omits requiredFieldsComplete — agent must infer transition trigger",
+      "severity": "medium",
+      "classification": "valid",
+      "category": "ux",
+      "lines": [188, 198, 60, 63],
+      "description": "answer() returns requiredPendingCount and optionalPendingCount but not requiredFieldsComplete boolean. Agent must re-call questions() or derive it. If required field count changes in future, derivation breaks.",
+      "recommendation": "Add requiredFieldsComplete and allQuestionsAnswered to answer() return format.",
+      "sources": [
+        {"reviewer": "agent-ux", "finding_id": "AU-05", "status": "unique"}
+      ]
+    },
+    {
+      "id": "D23",
+      "title": "Context extraction provided vs inferred boundary underspecified for agents",
+      "severity": "medium",
+      "classification": "valid",
+      "category": "ux",
+      "lines": [264, 266],
+      "description": "Rule 'explicitly provided' is ambiguous. 'quiero un banner azul para mi restaurante' — is vertical provided (restaurante) or inferred? One negative example given but no positive mapping. Different agents classify same input differently.",
+      "recommendation": "Add concrete mapping table: for each field, specify 1-2 examples of explicit vs inferred.",
+      "sources": [
+        {"reviewer": "agent-ux", "finding_id": "AU-06", "status": "unique"}
+      ]
+    }
+  ],
+  "scores": {
+    "pragmatic": {
+      "score": 15,
+      "score_per_finding": 2.14,
+      "valid_high": 0,
+      "valid_medium": 4,
+      "valid_low": 3,
+      "unique_valid_findings": 2,
+      "duplicates": 0,
+      "weak_findings": 0,
+      "false_positives": 0,
+      "best_unique_finding": "D2",
+      "breakdown": [
+        {"finding": "D1", "severity": "medium", "role": "first", "points": 2},
+        {"finding": "D2", "severity": "medium", "role": "unique", "points": 4},
+        {"finding": "D3", "severity": "medium", "role": "first", "points": 2},
+        {"finding": "D4", "severity": "low", "role": "unique", "points": 3},
+        {"finding": "D5", "severity": "low", "role": "first", "points": 1},
+        {"finding": "D6", "severity": "medium", "role": "first", "points": 2},
+        {"finding": "D7", "severity": "low", "role": "first", "points": 1}
+      ]
+    },
+    "operator": {
+      "score": 16,
+      "score_per_finding": 2.29,
+      "valid_high": 1,
+      "valid_medium": 3,
+      "valid_low": 3,
+      "unique_valid_findings": 3,
+      "duplicates": 2,
+      "weak_findings": 0,
+      "false_positives": 0,
+      "best_unique_finding": "D8",
+      "breakdown": [
+        {"finding": "D1", "severity": "medium", "role": "duplicate", "points": 1},
+        {"finding": "D8", "severity": "medium", "role": "unique", "points": 4},
+        {"finding": "D9", "severity": "high", "role": "first", "points": 3},
+        {"finding": "D10", "severity": "medium", "role": "first", "points": 2},
+        {"finding": "D11", "severity": "low", "role": "unique", "points": 3},
+        {"finding": "D7", "severity": "low", "role": "duplicate", "points": 0},
+        {"finding": "D12", "severity": "low", "role": "unique", "points": 3}
+      ]
+    },
+    "modeler": {
+      "score": 19,
+      "score_per_finding": 1.90,
+      "valid_high": 2,
+      "valid_medium": 4,
+      "valid_low": 3,
+      "unique_valid_findings": 4,
+      "duplicates": 5,
+      "weak_findings": 1,
+      "false_positives": 0,
+      "best_unique_finding": "D13",
+      "breakdown": [
+        {"finding": "D9", "severity": "high", "role": "duplicate", "points": 2},
+        {"finding": "D6", "severity": "medium", "role": "duplicate", "points": 1},
+        {"finding": "D10", "severity": "medium", "role": "duplicate", "points": 1},
+        {"finding": "D3", "severity": "medium", "role": "duplicate", "points": 1},
+        {"finding": "D13", "severity": "high", "role": "unique", "points": 5},
+        {"finding": "D14", "severity": "low", "role": "unique", "points": 3},
+        {"finding": "D15", "severity": "low", "role": "unique", "points": 3},
+        {"finding": "D5", "severity": "low", "role": "duplicate", "points": 0},
+        {"finding": "D16", "severity": "medium", "role": "unique", "points": 4},
+        {"finding": "D17", "severity": "low", "role": "weak", "points": -1}
+      ]
+    },
+    "agent-ux": {
+      "score": 26,
+      "score_per_finding": 3.25,
+      "valid_high": 2,
+      "valid_medium": 4,
+      "valid_low": 1,
+      "unique_valid_findings": 6,
+      "duplicates": 1,
+      "weak_findings": 0,
+      "false_positives": 0,
+      "best_unique_finding": "D21",
+      "breakdown": [
+        {"finding": "D18", "severity": "medium", "role": "unique", "points": 4},
+        {"finding": "D19", "severity": "high", "role": "unique", "points": 5},
+        {"finding": "D20", "severity": "medium", "role": "unique", "points": 4},
+        {"finding": "D21", "severity": "high", "role": "unique", "points": 5},
+        {"finding": "D22", "severity": "medium", "role": "unique", "points": 4},
+        {"finding": "D23", "severity": "medium", "role": "unique", "points": 4},
+        {"finding": "D5", "severity": "low", "role": "duplicate", "points": 0}
+      ]
+    }
+  }
+}
