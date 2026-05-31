@@ -811,6 +811,78 @@ socratic
       assert.strictEqual(errParsed.code, 'GSDC_GESSO_LINK_FAILED');
     }
 
+    // ==========================================
+    // CRASH-RECOVERY TESTS (Peer Review Fix)
+    // ==========================================
+
+    // TEST 40: Crash-recovery Scenario A — lienzo written, plan not written
+    console.log('  - Gesso Test 40: Crash-recovery repairs missing sourceLienzoId on retry...');
+    const g40 = await gessoManager.create({ name: 'Crash Recovery A', methodology: 'socratic', language: 'es' });
+    const validFilePath40 = writeTempFile('valid-gesso40.md', validGessoContent);
+    await gessoManager.write(g40.lienzoId, validFilePath40);
+    await gessoManager.confirm(g40.lienzoId, { by: 'tester' });
+    const p40 = await planManager.create({ name: 'Plan for Crash A' });
+
+    // Simulate crash after lienzo write, before plan write
+    const lienzoJsonPath40 = path.join(g40.lienzoDir, 'lienzo.json');
+    const planJsonPath40 = path.join(p40.planDir, 'plan.json');
+    const lienzoData40 = JSON.parse(fs.readFileSync(lienzoJsonPath40, 'utf8'));
+    lienzoData40.linkedPlanId = p40.planId;
+    lienzoData40.status = 'con_mockup';
+    lienzoData40.timestamps.updated = new Date().toISOString();
+    lienzoData40.history.push({ timestamp: new Date().toISOString(), action: 'link-plan', details: `Vinculado al plan ${p40.planId}` });
+    fs.writeFileSync(lienzoJsonPath40, JSON.stringify(lienzoData40, null, 2), 'utf8');
+
+    // plan.json remains unmodified
+    const planData40Before = JSON.parse(fs.readFileSync(planJsonPath40, 'utf8'));
+    assert.ok(!planData40Before.sourceLienzoId, 'Plan should not have sourceLienzoId before repair');
+
+    // Retry link — should repair plan.json
+    const linkRes40 = await gessoManager.linkPlan(g40.lienzoId, p40.planId);
+    assert.strictEqual(linkRes40.idempotent, true);
+    assert.strictEqual(linkRes40.repaired, true);
+
+    const planData40After = JSON.parse(fs.readFileSync(planJsonPath40, 'utf8'));
+    assert.strictEqual(planData40After.sourceLienzoId, g40.lienzoId);
+    assert.strictEqual(planData40After.history[planData40After.history.length - 1].action, 'linked-gesso');
+    assert.strictEqual(planData40After.history.filter(h => h.action === 'linked-gesso').length, 1, 'Should have exactly one linked-gesso history entry');
+
+    // TEST 41: Crash-recovery Scenario B — plan written, lienzo not written
+    console.log('  - Gesso Test 41: Crash-recovery avoids duplicate plan history on retry...');
+    const g41 = await gessoManager.create({ name: 'Crash Recovery B', methodology: 'socratic', language: 'es' });
+    const validFilePath41 = writeTempFile('valid-gesso41.md', validGessoContent);
+    await gessoManager.write(g41.lienzoId, validFilePath41);
+    await gessoManager.confirm(g41.lienzoId, { by: 'tester' });
+    const p41 = await planManager.create({ name: 'Plan for Crash B' });
+
+    // Simulate crash after plan write, before lienzo write
+    const lienzoJsonPath41 = path.join(g41.lienzoDir, 'lienzo.json');
+    const planJsonPath41 = path.join(p41.planDir, 'plan.json');
+    const planData41 = JSON.parse(fs.readFileSync(planJsonPath41, 'utf8'));
+    planData41.sourceLienzoId = g41.lienzoId;
+    planData41.timestamps.updated = new Date().toISOString();
+    planData41.history.push({ timestamp: new Date().toISOString(), action: 'linked-gesso', details: `Vinculado desde lienzo ${g41.lienzoId}` });
+    fs.writeFileSync(planJsonPath41, JSON.stringify(planData41, null, 2), 'utf8');
+
+    // lienzo.json remains unmodified
+    const lienzoData41Before = JSON.parse(fs.readFileSync(lienzoJsonPath41, 'utf8'));
+    assert.strictEqual(lienzoData41Before.linkedPlanId, null);
+
+    const historyCountBefore = planData41.history.length;
+
+    // Retry link — should write lienzo.json but NOT duplicate plan history
+    const linkRes41 = await gessoManager.linkPlan(g41.lienzoId, p41.planId);
+    assert.strictEqual(linkRes41.linked, true);
+    assert.ok(!linkRes41.idempotent);
+
+    const lienzoData41After = JSON.parse(fs.readFileSync(lienzoJsonPath41, 'utf8'));
+    assert.strictEqual(lienzoData41After.linkedPlanId, p41.planId);
+    assert.strictEqual(lienzoData41After.status, 'con_mockup');
+
+    const planData41After = JSON.parse(fs.readFileSync(planJsonPath41, 'utf8'));
+    assert.strictEqual(planData41After.history.length, historyCountBefore, 'Plan history should not have duplicate entries');
+    assert.strictEqual(planData41After.sourceLienzoId, g41.lienzoId);
+
   } finally {
     process.chdir(originalCwd);
   }
