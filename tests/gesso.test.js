@@ -344,6 +344,291 @@ async function run() {
 
     console.log('  - Gesso Test 15: Existing plan tests still pass (verified by run.js suite)...');
 
+    // ==========================================
+    // PHASE 2 TESTS
+    // ==========================================
+
+    // Helper: create temp files with gesso content
+    function writeTempFile(name, content) {
+      const p = path.join(tempProjectDir, name);
+      fs.writeFileSync(p, content, 'utf8');
+      return p;
+    }
+
+    const validGessoContent = `# Gesso / Lienzo en Blanco
+
+## Nombre del lienzo
+Mi Cafe
+
+## Metodología usada
+socratic
+
+## Resumen narrativo
+Un cafe de barrio acogedor.
+
+## Intención visual y tonal
+Cálido y cercano.
+
+## Audiencia y contexto de uso
+Vecinos del barrio.
+
+## Mensaje central
+El mejor cafe de la zona.
+
+## Estructura de layout propuesta
+Banner horizontal.
+
+## Elementos obligatorios
+Logo, telefono, direccion.
+
+## Riesgos o restricciones
+No usar azul.
+
+## Exploraciones descartadas
+Estilo minimalista frio.
+
+## Recomendaciones para Abbozzo
+Mantener la calidez en el mockup.
+`;
+
+    const invalidGessoContent = `# Gesso / Lienzo en Blanco
+
+## Nombre del lienzo
+Mi Cafe
+
+## Metodología usada
+socratic
+`;
+
+    // ==========================================
+    // TEST 16: write copies valid content into gesso.md
+    // ==========================================
+    console.log('  - Gesso Test 16: write copies valid content into gesso.md...');
+    const gWrite = await gessoManager.create({ name: 'Write Test', methodology: 'socratic', language: 'es' });
+    const validFilePath = writeTempFile('valid-gesso.md', validGessoContent);
+    const writeRes = await gessoManager.write(gWrite.lienzoId, validFilePath);
+    assert.strictEqual(writeRes.lienzoId, gWrite.lienzoId);
+    const writtenGessoPath = path.join(gWrite.lienzoDir, 'gesso.md');
+    const writtenContent = fs.readFileSync(writtenGessoPath, 'utf8');
+    assert.strictEqual(writtenContent, validGessoContent);
+    assert.strictEqual(writeRes.lienzo.history[writeRes.lienzo.history.length - 1].action, 'write');
+
+    // ==========================================
+    // TEST 17: write rejects missing source file
+    // ==========================================
+    console.log('  - Gesso Test 17: write rejects missing source file...');
+    try {
+      await gessoManager.write(gWrite.lienzoId, path.join(tempProjectDir, 'no-existe.md'));
+      assert.fail('Debería haber fallado por archivo fuente inexistente');
+    } catch (err) {
+      assert.strictEqual(err.code, 'GSDC_GESSO_ARTIFACT_MISSING');
+      assert.strictEqual(err.exitCode, 33);
+    }
+
+    // ==========================================
+    // TEST 18: write rejects empty source file
+    // ==========================================
+    console.log('  - Gesso Test 18: write rejects empty source file...');
+    const emptyFilePath = writeTempFile('empty-gesso.md', '');
+    try {
+      await gessoManager.write(gWrite.lienzoId, emptyFilePath);
+      assert.fail('Debería haber fallado por archivo fuente vacío');
+    } catch (err) {
+      assert.strictEqual(err.code, 'GSDC_GESSO_ARTIFACT_MISSING');
+      assert.strictEqual(err.exitCode, 33);
+    }
+
+    // ==========================================
+    // TEST 19: write rejects missing required sections
+    // ==========================================
+    console.log('  - Gesso Test 19: write rejects missing required sections...');
+    const invalidFilePath = writeTempFile('invalid-gesso.md', invalidGessoContent);
+    try {
+      await gessoManager.write(gWrite.lienzoId, invalidFilePath);
+      assert.fail('Debería haber fallado por secciones faltantes');
+    } catch (err) {
+      assert.strictEqual(err.code, 'GSDC_GESSO_INVALID_ARTIFACT');
+      assert.strictEqual(err.exitCode, 34);
+    }
+
+    // ==========================================
+    // TEST 20: confirm rejects invalid or placeholder gesso.md
+    // ==========================================
+    console.log('  - Gesso Test 20: confirm rejects invalid or placeholder gesso.md...');
+    const gConfirm = await gessoManager.create({ name: 'Confirm Test', methodology: 'socratic', language: 'es' });
+
+    // Reject placeholder (default template with {{name}} / {{methodology}})
+    try {
+      await gessoManager.confirm(gConfirm.lienzoId);
+      assert.fail('Debería haber fallado por gesso.md placeholder');
+    } catch (err) {
+      assert.strictEqual(err.code, 'GSDC_GESSO_INVALID_ARTIFACT');
+      assert.strictEqual(err.exitCode, 34);
+    }
+
+    // Write invalid content directly (bypassing write validation) and reject on confirm
+    const gessoMdPathConfirm = path.join(gConfirm.lienzoDir, 'gesso.md');
+    fs.writeFileSync(gessoMdPathConfirm, invalidGessoContent, 'utf8');
+    try {
+      await gessoManager.confirm(gConfirm.lienzoId);
+      assert.fail('Debería haber fallado por gesso.md inválido');
+    } catch (err) {
+      assert.strictEqual(err.code, 'GSDC_GESSO_INVALID_ARTIFACT');
+      assert.strictEqual(err.exitCode, 34);
+    }
+
+    // ==========================================
+    // TEST 21: confirm writes confirmation metadata and transitions to gesso_listo
+    // ==========================================
+    console.log('  - Gesso Test 21: confirm writes confirmation metadata and transitions to gesso_listo...');
+    const gConfirm2 = await gessoManager.create({ name: 'Confirm2 Test', methodology: 'socratic', language: 'es' });
+    const validFilePath2 = writeTempFile('valid-gesso2.md', validGessoContent);
+    await gessoManager.write(gConfirm2.lienzoId, validFilePath2);
+    const confirmRes = await gessoManager.confirm(gConfirm2.lienzoId, { by: 'tester' });
+    assert.strictEqual(confirmRes.confirmed, true);
+    assert.strictEqual(confirmRes.confirmedBy, 'tester');
+    assert.ok(confirmRes.confirmedAt, 'Debe tener confirmedAt');
+    assert.ok(confirmRes.gessoHash, 'Debe tener gessoHash');
+    assert.strictEqual(confirmRes.lienzo.status, 'gesso_listo');
+    assert.strictEqual(confirmRes.lienzo.confirmation.confirmed, true);
+    assert.strictEqual(confirmRes.lienzo.confirmation.confirmedBy, 'tester');
+    assert.strictEqual(confirmRes.lienzo.confirmation.hashAlgorithm, 'sha256-gesso-v1');
+    assert.strictEqual(confirmRes.lienzo.confirmation.gessoHash, confirmRes.gessoHash);
+    assert.ok(confirmRes.lienzo.timestamps.approved, 'Debe tener timestamps.approved');
+    assert.strictEqual(confirmRes.lienzo.history[confirmRes.lienzo.history.length - 1].action, 'confirm');
+
+    // ==========================================
+    // TEST 22: verify passes immediately after confirm
+    // ==========================================
+    console.log('  - Gesso Test 22: verify passes immediately after confirm...');
+    const verifyRes = await gessoManager.verify(gConfirm2.lienzoId);
+    assert.strictEqual(verifyRes.verified, true);
+    assert.strictEqual(verifyRes.gessoHash, confirmRes.gessoHash);
+    assert.strictEqual(verifyRes.hashAlgorithm, 'sha256-gesso-v1');
+
+    // ==========================================
+    // TEST 23: Mutating gesso.md after confirm makes verify fail with GSDC_GESSO_CHANGED_AFTER_CONFIRMATION
+    // ==========================================
+    console.log('  - Gesso Test 23: verify fails after mutating gesso.md...');
+    const gessoMdPath23 = path.join(gConfirm2.lienzoDir, 'gesso.md');
+    const originalContent = fs.readFileSync(gessoMdPath23, 'utf8');
+    fs.writeFileSync(gessoMdPath23, originalContent + '\n\nModified!', 'utf8');
+    try {
+      await gessoManager.verify(gConfirm2.lienzoId);
+      assert.fail('Debería haber fallado por gesso.md modificado');
+    } catch (err) {
+      assert.strictEqual(err.code, 'GSDC_GESSO_CHANGED_AFTER_CONFIRMATION');
+      assert.strictEqual(err.exitCode, 35);
+    }
+    // Restore original for subsequent tests if needed
+    fs.writeFileSync(gessoMdPath23, originalContent, 'utf8');
+
+    // ==========================================
+    // TEST 24: write, append-turn, and update-notes fail after confirm
+    // ==========================================
+    console.log('  - Gesso Test 24: write, append-turn, and update-notes fail after confirm...');
+    const validFilePath3 = writeTempFile('valid-gesso3.md', validGessoContent);
+
+    try {
+      await gessoManager.write(gConfirm2.lienzoId, validFilePath3);
+      assert.fail('Debería haber fallado write por estado no editable');
+    } catch (err) {
+      assert.strictEqual(err.code, 'GSDC_GESSO_INVALID_STATE');
+      assert.strictEqual(err.exitCode, 32);
+    }
+
+    try {
+      await gessoManager.appendTurn(gConfirm2.lienzoId, 'user', 'test');
+      assert.fail('Debería haber fallado append-turn por estado no editable');
+    } catch (err) {
+      assert.strictEqual(err.code, 'GSDC_GESSO_INVALID_STATE');
+      assert.strictEqual(err.exitCode, 32);
+    }
+
+    try {
+      await gessoManager.updateNotes(gConfirm2.lienzoId, 'tone', 'test');
+      assert.fail('Debería haber fallado update-notes por estado no editable');
+    } catch (err) {
+      assert.strictEqual(err.code, 'GSDC_GESSO_INVALID_STATE');
+      assert.strictEqual(err.exitCode, 32);
+    }
+
+    // ==========================================
+    // TEST 25: CLI --json output is structured and not double-wrapped for new commands
+    // ==========================================
+    console.log('  - Gesso Test 25: CLI --json output for new commands is structured...');
+    const gCli = await gessoManager.create({ name: 'CLI Test Phase2', methodology: 'socratic', language: 'es' });
+    const cliFilePath = writeTempFile('cli-gesso.md', validGessoContent);
+
+    // gesso write --json
+    const writeJson = execSync(`node "${cliBin}" gesso write --id ${gCli.lienzoId} --file "${cliFilePath}" --json`, {
+      cwd: process.cwd(), encoding: 'utf8'
+    });
+    const parsedWrite = JSON.parse(writeJson.trim());
+    assert.strictEqual(parsedWrite.ok, true);
+    assert.ok(parsedWrite.data.lienzoId, 'write --json debe devolver lienzoId');
+    assert.ok(!parsedWrite.data.data, 'Must not double-wrap data');
+
+    // gesso confirm --json
+    const confirmJson = execSync(`node "${cliBin}" gesso confirm --id ${gCli.lienzoId} --by cli-tester --json`, {
+      cwd: process.cwd(), encoding: 'utf8'
+    });
+    const parsedConfirm = JSON.parse(confirmJson.trim());
+    assert.strictEqual(parsedConfirm.ok, true);
+    assert.strictEqual(parsedConfirm.data.confirmed, true);
+    assert.strictEqual(parsedConfirm.data.confirmedBy, 'cli-tester');
+    assert.ok(!parsedConfirm.data.data, 'Must not double-wrap data');
+
+    // gesso verify --json
+    const verifyJson = execSync(`node "${cliBin}" gesso verify --id ${gCli.lienzoId} --json`, {
+      cwd: process.cwd(), encoding: 'utf8'
+    });
+    const parsedVerify = JSON.parse(verifyJson.trim());
+    assert.strictEqual(parsedVerify.ok, true);
+    assert.strictEqual(parsedVerify.data.verified, true);
+    assert.ok(!parsedVerify.data.data, 'Must not double-wrap data');
+
+    // CLI error cases
+    // gesso write --json with missing file
+    console.log('  - Gesso Test 25b: CLI write rejects missing file...');
+    try {
+      execSync(`node "${cliBin}" gesso write --id ${gCli.lienzoId} --file "${path.join(tempProjectDir, 'no-existe.md')}" --json`, {
+        cwd: process.cwd(), encoding: 'utf8'
+      });
+      assert.fail('Debería haber fallado CLI write con archivo inexistente');
+    } catch (cliErr) {
+      const errParsed = JSON.parse(cliErr.stderr.trim());
+      assert.strictEqual(errParsed.ok, false);
+      assert.strictEqual(errParsed.code, 'GSDC_GESSO_ARTIFACT_MISSING');
+    }
+
+    // gesso confirm --json with unconfirmed lienzo (placeholder)
+    console.log('  - Gesso Test 25c: CLI confirm rejects placeholder...');
+    const gCli2 = await gessoManager.create({ name: 'CLI Test Phase2b', methodology: 'socratic', language: 'es' });
+    try {
+      execSync(`node "${cliBin}" gesso confirm --id ${gCli2.lienzoId} --json`, {
+        cwd: process.cwd(), encoding: 'utf8'
+      });
+      assert.fail('Debería haber fallado CLI confirm con placeholder');
+    } catch (cliErr) {
+      const errParsed = JSON.parse(cliErr.stderr.trim());
+      assert.strictEqual(errParsed.ok, false);
+      assert.strictEqual(errParsed.code, 'GSDC_GESSO_INVALID_ARTIFACT');
+    }
+
+    // gesso verify --json on unconfirmed lienzo
+    console.log('  - Gesso Test 25d: CLI verify rejects unconfirmed lienzo...');
+    try {
+      execSync(`node "${cliBin}" gesso verify --id ${gCli2.lienzoId} --json`, {
+        cwd: process.cwd(), encoding: 'utf8'
+      });
+      assert.fail('Debería haber fallado CLI verify con lienzo no confirmado');
+    } catch (cliErr) {
+      const errParsed = JSON.parse(cliErr.stderr.trim());
+      assert.strictEqual(errParsed.ok, false);
+      assert.strictEqual(errParsed.code, 'GSDC_GESSO_INVALID_STATE');
+    }
+
   } finally {
     process.chdir(originalCwd);
   }
