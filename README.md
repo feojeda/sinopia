@@ -244,3 +244,7 @@ Para flujos automatizados de agentes, todos los comandos de consulta y transicio
 | `GSDC_AGENT_SKILLS_MISSING` | `19` | Faltan skills o comandos oficiales del agente validado por `doctor`. |
 | `GSDC_ARTIFACT_MISSING` | `20` | Artefacto físico requerido (ej: `mockup.html`) no encontrado. |
 | `GSDC_DECISIONS_CHANGED_AFTER_CONFIRMATION` | `21` | Tampering detectado: las decisiones fueron alteradas tras la confirmación criptográfica. |
+| `GSDC_INVALID_FIELD` | `22` | Campo no reconocido en `plan answer`. |
+| `GSDC_DECISIONS_LOCKED` | `23` | Decisiones confirmadas; usar `reset-confirmation` para modificar. |
+| `GSDC_INVALID_CHOICE_VALUE` | `26` | Valor inválido para campo de selección (numérico, placeholder, o fuera de opciones). |
+| `GSDC_STALE_MOCKUP` | `27` | `mockup.html` anterior a la confirmación; regenerar antes de enviar. |

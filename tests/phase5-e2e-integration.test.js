@@ -317,16 +317,23 @@ async function run() {
     }
 
     console.log('  - Phase 5.D.3: README error catalog includes Phase 1-4 codes...');
-    assert.ok(readmeContent.includes('GSDC_DECISIONS_CHANGED_AFTER_CONFIRMATION'), 'README must include GSDC_DECISIONS_CHANGED_AFTER_CONFIRMATION');
-
     const readmeErrorSection = readmeContent.substring(readmeContent.indexOf('Catálogo Oficial de Errores'));
-    const readmeErrorCodes = readmeErrorSection.match(/GSDC_[A-Z_]+/g) || [];
-    assert.ok(readmeErrorCodes.includes('GSDC_DECISIONS_CHANGED_AFTER_CONFIRMATION'), 'Error catalog must include Phase 1-4 codes');
+    for (const code of Object.keys(expectedErrorCodes)) {
+      assert.ok(readmeErrorSection.includes(code), `README error catalog must include ${code}`);
+    }
 
     console.log('  - Phase 5.D.4: Implementation source error codes match README catalog...');
+    const readmeErrorCodes = readmeErrorSection.match(/\`GSDC_[A-Z_]+\`/g) || [];
+    const planManagerCodes = new Set();
+    const pmCodeMatches = planManagerSrc.match(/'GSDC_[A-Z_]+'/g) || [];
+    pmCodeMatches.forEach(m => planManagerCodes.add(m.replace(/'/g, '')));
     for (const code of readmeErrorCodes) {
-      if (code === 'GSDC_DECISIONS_CHANGED_AFTER_CONFIRMATION') {
-        assert.ok(planManagerSrc.includes(`'${code}'`), `${code} must exist in plan-manager.js`);
+      const cleanCode = code.replace(/`/g, '');
+      if (planManagerSrc.includes('plan-manager.js') || cleanCode.startsWith('GSDC_')) {
+        assert.ok(
+          planManagerCodes.has(cleanCode) || fs.readFileSync(path.resolve(__dirname, '../lib/installer.js'), 'utf8').includes(cleanCode) || fs.readFileSync(path.resolve(__dirname, '../bin/gsd-canva.js'), 'utf8').includes(cleanCode),
+          `${cleanCode} from README must exist in implementation`
+        );
       }
     }
 
