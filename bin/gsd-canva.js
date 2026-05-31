@@ -692,9 +692,9 @@ gessoCmd
       handleSuccess(result, humanMsg);
     } catch (err) {
       handleError(
-        err.code || 'GSDC_JSON_PARSE_ERROR',
+        err.code || 'GSDC_GESSO_INVALID_STATE',
         err.message || 'Fallo al listar los lienzos.',
-        err.exitCode || 15,
+        err.exitCode || 32,
         err.details || {}
       );
     }

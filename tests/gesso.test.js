@@ -26,6 +26,25 @@ async function run() {
     await installer.init({ frameworkVersion: '1.0.0' });
 
     // ==========================================
+    // TEST 0: list returns empty when no lienzos exist
+    // ==========================================
+    console.log('  - Gesso Test 0: list returns empty when no lienzos exist...');
+    const emptyList = await gessoManager.list();
+    assert.deepStrictEqual(emptyList.lienzos, [], 'list debe devolver array vacío cuando no hay lienzos');
+
+    // ==========================================
+    // TEST 0b: status fails when lienzos/ does not exist
+    // ==========================================
+    console.log('  - Gesso Test 0b: status fails when lienzos/ does not exist...');
+    try {
+      await gessoManager.status('001');
+      assert.fail('Debería haber fallado por directorio inexistente');
+    } catch (err) {
+      assert.strictEqual(err.code, 'GSDC_GESSO_NOT_FOUND');
+      assert.strictEqual(err.exitCode, 31);
+    }
+
+    // ==========================================
     // TEST 1: create creates lienzos/ and the three expected files
     // ==========================================
     console.log('  - Gesso Test 1: create creates lienzos/ and expected files...');
@@ -295,6 +314,32 @@ async function run() {
       assert.strictEqual(errParsed.ok, false);
       assert.strictEqual(errParsed.code, 'GSDC_GESSO_NOT_FOUND');
       assert.strictEqual(errParsed.details && errParsed.details.id, undefined); // just verify structure
+    }
+
+    // gesso create --json with invalid methodology
+    console.log('  - Gesso Test 14b: CLI create rejects invalid methodology...');
+    try {
+      execSync(`node "${cliBin}" gesso create --name "Bad" --methodology unknown --language es --json`, {
+        cwd: process.cwd(), encoding: 'utf8'
+      });
+      assert.fail('Debería haber fallado CLI con metodología inválida');
+    } catch (cliErr) {
+      const errParsed = JSON.parse(cliErr.stderr.trim());
+      assert.strictEqual(errParsed.ok, false);
+      assert.strictEqual(errParsed.code, 'GSDC_INVALID_FIELD');
+    }
+
+    // gesso create --json with invalid language
+    console.log('  - Gesso Test 14c: CLI create rejects invalid language...');
+    try {
+      execSync(`node "${cliBin}" gesso create --name "Bad" --methodology socratic --language fr --json`, {
+        cwd: process.cwd(), encoding: 'utf8'
+      });
+      assert.fail('Debería haber fallado CLI con idioma inválido');
+    } catch (cliErr) {
+      const errParsed = JSON.parse(cliErr.stderr.trim());
+      assert.strictEqual(errParsed.ok, false);
+      assert.strictEqual(errParsed.code, 'GSDC_INVALID_FIELD');
     }
 
     console.log('  - Gesso Test 15: Existing plan tests still pass (verified by run.js suite)...');
