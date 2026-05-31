@@ -75,6 +75,36 @@ async function run() {
     content.includes('registrado') || content.includes('anotado') || content.includes('listo para revisar'),
     'Must include safe filler alternatives like "registrado", "anotado", "listo para revisar"'
   );
+
+  console.log('  - Phase 4.9: Rendered Antigravity skill includes the interactive flow...');
+  const agentAdapters = require('../lib/agent-adapters');
+  const antigravitySkill = require('../lib/agent-adapters/antigravity-skill');
+  const codexCommand = require('../lib/agent-adapters/codex-command');
+  const opencodeCommand = require('../lib/agent-adapters/opencode-command');
+  const sourceRoot = path.resolve(__dirname, '../templates/agent-source');
+  const caps = agentAdapters.loadAllCapabilities(sourceRoot);
+  const capEntry = caps.find(c => c.capability && c.capability.id === 'canva-mockup');
+  assert.ok(capEntry, 'canva-mockup capability must load');
+
+  const antigravityRendered = antigravitySkill.render(capEntry.capability, capEntry.instructions);
+  assert.ok(antigravityRendered.includes('plan questions'), 'Antigravity skill must include plan questions');
+  assert.ok(antigravityRendered.includes('plan answer'), 'Antigravity skill must include plan answer');
+
+  console.log('  - Phase 4.10: Rendered Codex command includes the interactive flow...');
+  const codexRendered = codexCommand.render(capEntry.capability, capEntry.instructions);
+  assert.ok(codexRendered.includes('plan questions'), 'Codex command must include plan questions');
+  assert.ok(codexRendered.includes('plan answer'), 'Codex command must include plan answer');
+
+  console.log('  - Phase 4.11: Rendered OpenCode command includes the interactive flow...');
+  const opencodeRendered = opencodeCommand.render(capEntry.capability, capEntry.instructions);
+  assert.ok(opencodeRendered.includes('plan questions'), 'OpenCode command must include plan questions');
+  assert.ok(opencodeRendered.includes('plan answer'), 'OpenCode command must include plan answer');
+
+  console.log('  - Phase 4.12: Legacy .antigravity/commands/ is not presented as Antigravity 2.0 primary...');
+  assert.ok(
+    !content.includes('.antigravity/commands/') || content.includes('legacy') || content.includes('deprecated'),
+    'Instructions must not describe .antigravity/commands/ as Antigravity 2.0 primary surface'
+  );
 }
 
 module.exports = { run };
