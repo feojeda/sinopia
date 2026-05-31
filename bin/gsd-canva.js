@@ -349,6 +349,30 @@ planCmd
     }
   });
 
+// plan reset-confirmation
+planCmd
+  .command('reset-confirmation')
+  .description('Permite corregir decisiones confirmadas revirtiendo el estado a questions_pending')
+  .requiredOption('--id <id>', 'ID del plan secuencial de tres dígitos')
+  .option('--json', 'Salida estructurada en JSON puro')
+  .action(async (options) => {
+    try {
+      const planManager = require('../lib/plan-manager');
+      const result = await planManager.resetConfirmation(options.id);
+      let humanMsg = '';
+      if (!options.json) {
+        const chalk = require('chalk');
+        humanMsg = chalk.green(`✔ Plan ${options.id}: Confirmación reseteada. Estado vuelto a questions_pending.`);
+        if (result.staleRenameFailed) {
+          humanMsg += '\n' + chalk.yellow(`⚠ No se pudo renombrar mockup.html stale: ${result.staleRenameError}`);
+        }
+      }
+      handleSuccess(result, humanMsg);
+    } catch (err) {
+      handleError(err.code || 'GSDC_INVALID_STATE', err.message, err.exitCode || 13, err.details || {});
+    }
+  });
+
 // plan confirm-decisions
 planCmd
   .command('confirm-decisions')
