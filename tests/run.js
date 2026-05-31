@@ -91,6 +91,17 @@ async function runAll() {
     failed = true;
   }
 
+  try {
+    console.log('--- 8. Pruebas de v1.4 Phase 2: Questions and Answer CLI ---');
+    const phase2Tests = require('./phase2-questions-answer.test');
+    await phase2Tests.run();
+    console.log('🟢 Pruebas de v1.4 Phase 2 completadas con éxito.\n');
+  } catch (err) {
+    console.error('🔴 FAILED: Pruebas de v1.4 Phase 2 fallaron.');
+    console.error(err);
+    failed = true;
+  }
+
   // Limpieza final
   if (fs.existsSync(tempDir)) {
     fs.rmSync(tempDir, { recursive: true, force: true });
