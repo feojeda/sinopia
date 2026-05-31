@@ -159,4 +159,12 @@ Sinopia es la evolución conceptual y arquitectónica de `gsd-canva`. Actualment
 *   Estamos migrando y renombrando la infraestructura del CLI para operar bajo el comando global `sinopia`.
 *   Estamos implementando las skills conversacionales personalizadas de nuestros asistentes: **Francesco**, **Giulio** y **Salai**.
 
+## Documentación
+
+- **[Guía de usuario: Gesso / Lienzo en Blanco](docs/guides/gesso_lienzo_en_blanco.md)** — Cómo usar la Fase 0, metodologías, flujo Gesso → Mockup.
+- [Referencia de comandos: gesso](docs/commands/gesso.md) — Referencia CLI completa de `gsd-canva gesso`.
+- [Planes de implementación](docs/implementation_plans/) — Documentos de implementación por fase.
+
+---
+
 > "La IA puede pintar el cuadro. Sinopia resguarda tu visión original."

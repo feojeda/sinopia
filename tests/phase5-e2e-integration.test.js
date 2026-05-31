@@ -3,6 +3,7 @@ const path = require('path');
 const assert = require('assert');
 const os = require('os');
 const planManager = require('../lib/plan-manager');
+const gessoManager = require('../lib/gesso-manager');
 const installer = require('../lib/installer');
 const agentAdapters = require('../lib/agent-adapters');
 
@@ -303,7 +304,10 @@ async function run() {
       'GSDC_ADAPTER_EMPTY_INSTRUCTIONS', 'GSDC_CAPABILITY_MISSING',
       'GSDC_CAPABILITY_INVALID_JSON', 'GSDC_CAPABILITY_INVALID',
       'GSDC_CAPABILITY_EMPTY_INSTRUCTIONS', 'GSDC_SOURCE_MISSING',
-      'GSDC_ADAPTER_UNKNOWN'
+      'GSDC_ADAPTER_UNKNOWN',
+      'GSDC_GESSO_NOT_FOUND', 'GSDC_GESSO_INVALID_STATE',
+      'GSDC_GESSO_ARTIFACT_MISSING', 'GSDC_GESSO_INVALID_ARTIFACT',
+      'GSDC_GESSO_CHANGED_AFTER_CONFIRMATION', 'GSDC_GESSO_LINK_FAILED'
     ]);
 
     for (const testFile of testFiles) {
@@ -331,11 +335,279 @@ async function run() {
       const cleanCode = code.replace(/`/g, '');
       if (planManagerSrc.includes('plan-manager.js') || cleanCode.startsWith('GSDC_')) {
         assert.ok(
-          planManagerCodes.has(cleanCode) || fs.readFileSync(path.resolve(__dirname, '../lib/installer.js'), 'utf8').includes(cleanCode) || fs.readFileSync(path.resolve(__dirname, '../bin/gsd-canva.js'), 'utf8').includes(cleanCode),
+          planManagerCodes.has(cleanCode) || fs.readFileSync(path.resolve(__dirname, '../lib/installer.js'), 'utf8').includes(cleanCode) || fs.readFileSync(path.resolve(__dirname, '../bin/gsd-canva.js'), 'utf8').includes(cleanCode) || fs.readFileSync(path.resolve(__dirname, '../lib/gesso-manager.js'), 'utf8').includes(cleanCode),
           `${cleanCode} from README must exist in implementation`
         );
       }
     }
+
+    // ================================================================
+    // PART E: Gesso End-to-End Flow
+    // ================================================================
+
+    const GESSO_FIXTURE = `# Gesso / Lienzo en Blanco
+
+## Nombre del lienzo
+Cafe de Barrio
+
+## Metodologia usada
+socratic
+
+## Resumen narrativo
+Un café de barrio acogedor con enfoque artesanal.
+
+## Intencion visual y tonal
+Cálido, cercano, artesanal. Colores tierra.
+
+## Audiencia y contexto de uso
+Vecinos del barrio, 25-60 años.
+
+## Mensaje central
+Café de especialidad con alma de barrio.
+
+## Estructura de layout propuesta
+Header con logo, sección de productos, footer con horarios.
+
+## Elementos obligatorios
+Logo circular, paleta de colores tierra.
+
+## Riesgos o restricciones
+Ninguno específico.
+
+## Exploraciones descartadas
+Estilo minimalista frío.
+
+## Recomendaciones para Abbozzo
+Jerarquía visual clara con el producto como protagonista.
+`;
+
+    console.log('  - Phase 5.E.1: Create lienzo...');
+    const lienzo = await gessoManager.create({
+      name: 'Cafe de Barrio',
+      methodology: 'socratic',
+      language: 'es'
+    });
+    assert.strictEqual(lienzo.lienzo.status, 'en_blanco');
+    assert.strictEqual(lienzo.lienzo.methodology, 'socratic');
+    assert.ok(lienzo.lienzoDir.startsWith('lienzos/lienzo_'), 'Lienzo dir must be under lienzos/');
+
+    console.log('  - Phase 5.E.2: Append turns...');
+    const turn1 = await gessoManager.appendTurn(lienzo.lienzoId, 'user', 'Quiero un café de barrio acogedor', ['initial_prompt']);
+    assert.strictEqual(turn1.turnCount, 1);
+    assert.strictEqual(turn1.turn.role, 'user');
+    assert.deepStrictEqual(turn1.turn.tags, ['initial_prompt']);
+
+    const turn2 = await gessoManager.appendTurn(lienzo.lienzoId, 'assistant', '¿Qué sensación debe transmitir?', ['methodology_question']);
+    assert.strictEqual(turn2.turnCount, 2);
+    assert.strictEqual(turn2.turn.role, 'assistant');
+
+    console.log('  - Phase 5.E.3: Update notes...');
+    const noteRes = await gessoManager.updateNotes(lienzo.lienzoId, 'tone', 'Cálido, cercano, artesanal');
+    assert.strictEqual(noteRes.field, 'tone');
+    assert.strictEqual(noteRes.value, 'Cálido, cercano, artesanal');
+
+    const noteRes2 = await gessoManager.updateNotes(lienzo.lienzoId, 'audience', 'Vecinos del barrio, 25-60 años');
+    assert.strictEqual(noteRes2.field, 'audience');
+
+    // Verify sesion.json has the turns and notes
+    const lienzoDir = path.join('lienzos', `lienzo_${lienzo.lienzoId}_cafe-de-barrio`);
+    const sesionPath = path.join(lienzoDir, 'sesion.json');
+    const sesionData = JSON.parse(fs.readFileSync(sesionPath, 'utf8'));
+    assert.strictEqual(sesionData.turns.length, 2);
+    assert.strictEqual(sesionData.workingNotes.tone, 'Cálido, cercano, artesanal');
+    assert.strictEqual(sesionData.workingNotes.audience, 'Vecinos del barrio, 25-60 años');
+
+    console.log('  - Phase 5.E.4: Write gesso.md (valid fixture)...');
+    const fixturePath = path.join(lienzoDir, '..', 'fixture_gesso.md');
+    fs.writeFileSync(fixturePath, GESSO_FIXTURE, 'utf8');
+    const writeRes = await gessoManager.write(lienzo.lienzoId, fixturePath);
+    assert.ok(writeRes.gessoMdPath.includes('gesso.md'), 'Must write gesso.md');
+    assert.strictEqual(writeRes.lienzo.status, 'en_blanco', 'Status remains en_blanco after write');
+
+    // Clean up fixture
+    fs.unlinkSync(fixturePath);
+
+    // Verify gesso.md content was written correctly
+    const gessoMdPath = path.join(lienzoDir, 'gesso.md');
+    const gessoContent = fs.readFileSync(gessoMdPath, 'utf8');
+    assert.ok(gessoContent.includes('Cafe de Barrio'), 'gesso.md must contain lienzo name');
+    assert.ok(gessoContent.includes('Jerarquía visual clara'), 'gesso.md must contain recommendations');
+    assert.ok(!gessoContent.includes('{{'), 'gesso.md must not contain placeholders');
+    assert.ok(!gessoContent.includes('Por definir'), 'gesso.md must not contain placeholder text');
+
+    console.log('  - Phase 5.E.5: Confirm → verify status is gesso_listo...');
+    const confirmGessoRes = await gessoManager.confirm(lienzo.lienzoId, { by: 'user' });
+    assert.strictEqual(confirmGessoRes.confirmed, true);
+    assert.strictEqual(confirmGessoRes.confirmedBy, 'user');
+    assert.strictEqual(confirmGessoRes.gessoHash.length, 64, 'SHA-256 hex = 64 chars');
+    assert.strictEqual(confirmGessoRes.lienzo.status, 'gesso_listo');
+    assert.strictEqual(confirmGessoRes.lienzo.confirmation.confirmed, true);
+    assert.strictEqual(confirmGessoRes.lienzo.confirmation.hashAlgorithm, 'sha256-gesso-v1');
+
+    console.log('  - Phase 5.E.6: Verify (gesso verify passes)...');
+    const verifyGessoRes = await gessoManager.verify(lienzo.lienzoId);
+    assert.strictEqual(verifyGessoRes.verified, true);
+    assert.strictEqual(verifyGessoRes.gessoHash, confirmGessoRes.gessoHash);
+    assert.strictEqual(verifyGessoRes.hashAlgorithm, 'sha256-gesso-v1');
+
+    // Verify that tampering after confirmation is detected
+    fs.writeFileSync(gessoMdPath, GESSO_FIXTURE + '\nTampered content.\n', 'utf8');
+    try {
+      await gessoManager.verify(lienzo.lienzoId);
+      assert.fail('Should have thrown after tampering');
+    } catch (e) {
+      assert.strictEqual(e.code, 'GSDC_GESSO_CHANGED_AFTER_CONFIRMATION');
+      assert.strictEqual(e.exitCode, 35);
+    }
+    // Restore original
+    fs.writeFileSync(gessoMdPath, GESSO_FIXTURE, 'utf8');
+    const verifyGessoRes2 = await gessoManager.verify(lienzo.lienzoId);
+    assert.strictEqual(verifyGessoRes2.verified, true);
+
+    // Verify append-turn fails after confirmation
+    try {
+      await gessoManager.appendTurn(lienzo.lienzoId, 'user', 'Intento post-confirmacion');
+      assert.fail('Should have thrown on append-turn after confirm');
+    } catch (e) {
+      assert.strictEqual(e.code, 'GSDC_GESSO_INVALID_STATE');
+      assert.strictEqual(e.exitCode, 32);
+    }
+
+    // Verify update-notes fails after confirmation
+    try {
+      await gessoManager.updateNotes(lienzo.lienzoId, 'tone', 'Modificado');
+      assert.fail('Should have thrown on update-notes after confirm');
+    } catch (e) {
+      assert.strictEqual(e.code, 'GSDC_GESSO_INVALID_STATE');
+      assert.strictEqual(e.exitCode, 32);
+    }
+
+    console.log('  - Phase 5.E.7: Create mockup plan independently...');
+    const gessoPlan = await createFilledPlan('Cafe de Barrio');
+    assert.ok(gessoPlan.planId, 'Plan must have an ID');
+    const planJsonPath = path.join('canva-plans', `plan_${gessoPlan.planId}_cafe-de-barrio`, 'plan.json');
+    const planDataForCheck = JSON.parse(fs.readFileSync(planJsonPath, 'utf8'));
+    assert.strictEqual(planDataForCheck.sourceLienzoId, undefined, 'Plan created without gesso has no sourceLienzoId');
+
+    console.log('  - Phase 5.E.8: Link gesso to plan...');
+    const linkGessoRes = await gessoManager.linkPlan(lienzo.lienzoId, gessoPlan.planId);
+    assert.strictEqual(linkGessoRes.linked, true);
+    assert.strictEqual(linkGessoRes.lienzo.status, 'con_mockup');
+    assert.strictEqual(linkGessoRes.lienzo.linkedPlanId, gessoPlan.planId);
+    assert.strictEqual(linkGessoRes.plan.sourceLienzoId, lienzo.lienzoId);
+
+    // Verify lienzo.json on disk
+    const lienzoJsonPath = path.join(lienzoDir, 'lienzo.json');
+    const lienzoDataOnDisk = JSON.parse(fs.readFileSync(lienzoJsonPath, 'utf8'));
+    assert.strictEqual(lienzoDataOnDisk.status, 'con_mockup');
+    assert.strictEqual(lienzoDataOnDisk.linkedPlanId, gessoPlan.planId);
+
+    // Verify plan.json on disk has sourceLienzoId
+    const planDataLinked = JSON.parse(fs.readFileSync(planJsonPath, 'utf8'));
+    assert.strictEqual(planDataLinked.sourceLienzoId, lienzo.lienzoId);
+
+    // Idempotency: link again same lienzo → same plan
+    const linkGessoRes2 = await gessoManager.linkPlan(lienzo.lienzoId, gessoPlan.planId);
+    assert.strictEqual(linkGessoRes2.linked, true);
+    assert.strictEqual(linkGessoRes2.idempotent, true);
+
+    console.log('  - Phase 5.E.9: Plan questions still work normally after link...');
+    const qAfterLink = await planManager.questions(gessoPlan.planId);
+    assert.strictEqual(qAfterLink.allQuestionsAddressed, true, 'Plan questions must still be addressed after link');
+
+    // Create a fresh plan with just create (no fill) to test questions work
+    const planAfterLink = await planManager.create({ name: 'Test After Link' });
+    const qAfterLink2 = await planManager.questions(planAfterLink.planId);
+    assert.strictEqual(qAfterLink2.requiredPendingCount, 6, 'New plan must have 6 required pending');
+    assert.strictEqual(qAfterLink2.suggestedAction, 'ask_questions');
+
+    // Verify confirm-decisions still works (fill all required first)
+    await planManager.answer(planAfterLink.planId, 'vertical', 'E-Commerce');
+    await planManager.answer(planAfterLink.planId, 'audiencia', 'Usuarios');
+    await planManager.answer(planAfterLink.planId, 'formato', 'Instagram Post (1080x1080)');
+    await planManager.answer(planAfterLink.planId, 'paleta', 'Oscuro');
+    await planManager.answer(planAfterLink.planId, 'copy', 'Test copy');
+    await planManager.answer(planAfterLink.planId, 'cta', 'Comprar');
+    await planManager.answer(planAfterLink.planId, 'assets', '');
+    const confirmPlanAfterLink = await planManager.confirmDecisions(planAfterLink.planId, { by: 'user' });
+    assert.strictEqual(confirmPlanAfterLink.confirmed, true);
+
+    console.log('  - Phase 5.E.10: Direct plan creation without gesso still works...');
+    // Create plan in a fresh init to isolate
+    const noGessoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-canva-nogesso-'));
+    const origCwd3 = process.cwd();
+    process.chdir(noGessoDir);
+    try {
+      await installer.init({ frameworkVersion: '1.0.0' });
+      const directPlan = await planManager.create({ name: 'Direct Plan No Gesso' });
+      assert.ok(directPlan.planId, 'Direct plan must have an ID');
+
+      // Verify the full plan lifecycle still works
+      await planManager.answer(directPlan.planId, 'vertical', 'SaaS');
+      await planManager.answer(directPlan.planId, 'audiencia', 'Desarrolladores');
+      await planManager.answer(directPlan.planId, 'formato', 'Twitter Post (1200x675)');
+      await planManager.answer(directPlan.planId, 'paleta', 'Oscuro');
+      await planManager.answer(directPlan.planId, 'copy', 'Nuevo producto');
+      await planManager.answer(directPlan.planId, 'cta', 'Probar Gratis');
+      await planManager.answer(directPlan.planId, 'assets', '');
+
+      const qDirect = await planManager.questions(directPlan.planId);
+      assert.strictEqual(qDirect.allQuestionsAddressed, true);
+
+      const cDirect = await planManager.confirmDecisions(directPlan.planId, { by: 'user' });
+      assert.strictEqual(cDirect.confirmed, true);
+
+      // Verify no lienzos/ dir was created
+      assert.ok(!fs.existsSync(path.join(noGessoDir, 'lienzos')), 'No lienzos/ dir when gesso not used');
+    } finally {
+      process.chdir(origCwd3);
+      fs.rmSync(noGessoDir, { recursive: true, force: true });
+    }
+
+    // ================================================================
+    // PART F: Gesso Documentation Existence Checks
+    // ================================================================
+
+    console.log('  - Phase 5.F.1: gesso.md command reference exists...');
+    const gessoCmdDocPath = path.resolve(__dirname, '../docs/commands/gesso.md');
+    assert.ok(fs.existsSync(gessoCmdDocPath), 'docs/commands/gesso.md must exist');
+    const gessoCmdDoc = fs.readFileSync(gessoCmdDocPath, 'utf8');
+    assert.ok(gessoCmdDoc.includes('gesso create'), 'Must document gesso create');
+    assert.ok(gessoCmdDoc.includes('gesso confirm'), 'Must document gesso confirm');
+    assert.ok(gessoCmdDoc.includes('gesso link-plan'), 'Must document gesso link-plan');
+    assert.ok(gessoCmdDoc.includes('GSDC_GESSO_NOT_FOUND'), 'Must document error codes');
+    assert.ok(gessoCmdDoc.includes('GSDC_GESSO_CHANGED_AFTER_CONFIRMATION'), 'Must document hash error');
+
+    console.log('  - Phase 5.F.2: User guide exists and covers required topics...');
+    const userGuidePath = path.resolve(__dirname, '../docs/guides/gesso_lienzo_en_blanco.md');
+    assert.ok(fs.existsSync(userGuidePath), 'docs/guides/gesso_lienzo_en_blanco.md must exist');
+    const userGuide = fs.readFileSync(userGuidePath, 'utf8');
+    assert.ok(userGuide.includes('lienzo-en-blanco'), 'Must mention lienzo-en-blanco alias');
+    assert.ok(userGuide.includes('blank-canvas'), 'Must mention blank-canvas alias');
+    assert.ok(userGuide.includes('tela-bianca'), 'Must mention tela-bianca alias');
+    assert.ok(userGuide.includes('gesso'), 'Must mention gesso alias');
+    assert.ok(userGuide.includes('canva-blank-canvas'), 'Must mention canva-blank-canvas alias');
+    assert.ok(userGuide.includes('obligatorio'), 'Must mention Gesso is optional');
+    assert.ok(userGuide.includes('no autopobla'), 'Must clarify that Gesso does not autopopulate decisions.json');
+
+    console.log('  - Phase 5.F.3: Developer state model exists and covers required topics...');
+    const devDocPath = path.resolve(__dirname, '../docs/developer/gesso_state_model.md');
+    assert.ok(fs.existsSync(devDocPath), 'docs/developer/gesso_state_model.md must exist');
+    const devDoc = fs.readFileSync(devDocPath, 'utf8');
+    assert.ok(devDoc.includes('en_blanco'), 'Must document en_blanco state');
+    assert.ok(devDoc.includes('gesso_listo'), 'Must document gesso_listo state');
+    assert.ok(devDoc.includes('con_mockup'), 'Must document con_mockup state');
+    assert.ok(devDoc.includes('sha256-gesso-v1'), 'Must document hash algorithm');
+    assert.ok(devDoc.includes('writeAtomicJson'), 'Must document atomic write pattern');
+    assert.ok(devDoc.includes('lockManager'), 'Must document lock manager');
+
+    console.log('  - Phase 5.F.4: README.md and README.es.md have gesso doc links...');
+    const readmeMd = fs.readFileSync(path.resolve(__dirname, '../README.md'), 'utf8');
+    assert.ok(readmeMd.includes('docs/commands/gesso.md'), 'README.md must link to gesso commands');
+    assert.ok(readmeMd.includes('GSDC_GESSO_NOT_FOUND'), 'README.md must include gesso error codes');
+
+    const readmeEs = fs.readFileSync(path.resolve(__dirname, '../README.es.md'), 'utf8');
+    assert.ok(readmeEs.includes('docs/guides/gesso_lienzo_en_blanco.md'), 'README.es.md must link to gesso user guide');
 
   } finally {
     process.chdir(originalCwd);
