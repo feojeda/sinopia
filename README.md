@@ -1,250 +1,162 @@
-# GSD Canva (Spec-Driven Canva Lifecycle Framework)
+# Sinopia
 
-`gsd-canva` es un framework de grado empresarial y herramienta CLI diseñada para guiar el ciclo de vida de creación de elementos en Canva de forma estructurada a través de **Spec-Driven Development (SDD)**.
+**Spec-driven creative workflow for human-led AI design.**
 
-Inspirado en GSD (Goal-Seeking Development), establece una división de responsabilidades robusta, aislante y atómica para evitar alucinaciones visuales y pérdidas de precisión en la IA mediante un flujo interactivo de dos fases:
+Sinopia is an early-stage framework for making AI-assisted design less chaotic, more auditable, and more human-directed.
 
-*   **Fase 1: Prototipado e Iteración Visual** (Maquetación HTML local e inicialización de borradores).
-*   **Fase 2: Ajuste Fino Determinista** (Edición matemática pixel-perfect en Canva mediante transacciones MCP sin adivinaciones).
+It started from a practical frustration: when a human asks an AI agent to create something in Canva through the Canva MCP, there may be two AI systems involved. One AI interprets the human's intent, then another AI interprets what the first AI asked Canva to do. That chain can be powerful, but it also multiplies ambiguity.
 
----
+Sinopia exists to reduce that ambiguity.
 
-## Modelo Conceptual
-
-```text
-Agent skills/commands are the operational frontend.
-gsd-canva CLI is the deterministic backend.
-canva-plans/ is the auditable state.
-```
+The agent may hallucinate. The process should not.
 
 ---
 
-## 🛠 Arquitectura del Workspace
+## Why Sinopia Exists
 
-El framework organiza tu proyecto destino estructurando limpiamente los archivos del sistema, datos de usuario y salidas:
+AI design tools are good at generating. They are less reliable at preserving intent.
 
-```text
-.gsd-canva/
-  ├── manifest.json              <-- Hashes sha256, mappings y schemaVersion: 2 (Sistema)
-  ├── config.json                <-- Configuración portable (Commiteado)
-  ├── config.local.example.json  <-- Plantilla de configuración local
-  ├── commands/                  <-- Plantillas de comandos slash markdown
-  ├── workflows/                 <-- Especificaciones y guías de flujos
-  └── .lock                      <-- Lockfile de concurrencia temporal (Gitignored/Temporal)
+For a human trying to create real design work, the frustrating parts are familiar:
 
-.agents/
-  └── skills/                    <-- Antigravity 2.0 workspace skills (Primary)
-      ├── canva-mockup/SKILL.md
-      ├── canva-draft/SKILL.md
-      ├── canva-refine/SKILL.md
-      └── canva-deliver/SKILL.md
+- The agent makes assumptions before understanding the creative direction.
+- The output looks plausible but does not match the user's vision.
+- Design decisions happen implicitly instead of being agreed explicitly.
+- The user has to correct the same intent over and over.
+- The system moves forward without a clear artifact trail.
+- When another AI system is involved, the creative process becomes even harder to control.
 
-.codex/
-  └── commands/                  <-- Codex slash commands (Supported)
-      ├── canva-mockup.md
-      ├── canva-draft.md
-      ├── canva-refine.md
-      └── canva-deliver.md
+Sinopia approaches this as a software engineering problem and a creative workflow problem at the same time.
 
-.opencode/
-  └── commands/                  <-- OpenCode commands (Experimental)
-      ├── canva-mockup.md
-      ├── canva-draft.md
-      ├── canva-refine.md
-      └── canva-deliver.md
+From software engineering, it borrows the discipline of spec-driven development: explicit phases, durable artifacts, state, validation, confirmations, and reproducible handoffs.
 
-.antigravity/
-  └── commands/                  <-- Legacy (Deprecated — compatibility only)
+From art and design, it borrows the language of the studio: blank canvas, preparation, sketch, studies, and final works.
 
-canva-plans/                     <-- Carpeta de planes secuenciales (Commiteado)
-  ├── plan_001_[nombre]/
-  │     ├── plan.json            <-- Máquina de estados detallada y atómica
-  │     ├── requerimientos.md    <-- Dimensiones, copy y assets
-  │     ├── investigacion.md     <-- Paletas HSL, fuentes y análisis visual
-  │     ├── preguntas.md         <-- Dudas conceptuales y alineación del usuario
-  │     ├── plan_ejecucion.md    <-- Boceto conceptual y rejilla cartesiana
-  │     └── roadmap_progreso.md  <-- Checklist interactivo de hitos de la fase
-  └── plan_002_[nombre]/
+The goal is not to make the agent the artist.
 
-system_templates.json            <-- Catálogo técnico de placeholders (Commiteado)
-delivery/                        <-- Assets PNG/PDF descargados y listos (Gitignored)
-```
+The goal is to give the human artist a reliable assistant.
 
 ---
 
-## 🤖 Agent Adapters
+## The Core Idea
 
-`gsd-canva` soporta múltiples runtimes de agente mediante adapters independientes. Cada adapter genera artifacts en el formato nativo del agente desde una fuente neutral compartida (`templates/agent-source/`).
+Sinopia is a deterministic creative workshop around AI-assisted design.
 
-| Agent | Output Path | Status |
-| :--- | :--- | :--- |
-| **Antigravity 2.0** | `.agents/skills/<id>/SKILL.md` | **Primary** |
-| **Codex** | `.codex/commands/<id>.md` | Supported |
-| **OpenCode** | `.opencode/commands/<id>.md` | Experimental |
-| Antigravity legacy | `.antigravity/commands/<id>.md` | Deprecated (compatibility only) |
+The human owns the vision.
 
-### Manifest v2
+The agent acts as a studio assistant:
 
-El archivo `.gsd-canva/manifest.json` registra los artifacts generados por adapter con `schemaVersion: 2`:
+- asks clarifying questions,
+- preserves context,
+- prepares structured artifacts,
+- proposes next steps,
+- executes bounded tasks,
+- records decisions,
+- and avoids moving beyond what the user approved.
 
-```json
-{
-  "schemaVersion": 2,
-  "frameworkVersion": "1.0.0",
-  "files": [],
-  "agents": {
-    "antigravity": {
-      "adapter": "antigravity-skill-v1",
-      "files": [{ "target": ".agents/skills/canva-mockup/SKILL.md", "sha256": "...", "managed": true }]
-    },
-    "codex": { "adapter": "codex-command-v1", "files": [] },
-    "opencode": { "adapter": "opencode-command-v1", "files": [] }
-  }
-}
-```
+The framework cannot fully control what an external AI, such as Canva's AI layer, will do. But it can control the process used by the user's own agent before, during, and after that interaction.
+
+That process is the product.
 
 ---
 
-## 🚀 Instalación e Inicialización
+## What "Sinopia" Means
 
-### 1. Registro Global Local
-Para registrar el comando en la terminal global de tu Mac desde el directorio de desarrollo:
-```bash
-npm install -g .
-# o también
-npm link
-```
+A **sinopia** is the preparatory underdrawing beneath a fresco.
 
-### 2. Inicialización en un Proyecto Destino
-Ubícate en la raíz del proyecto donde deseas crear diseños estructurados en Canva y ejecuta:
+It is not the final painting. It is the hidden structure that guides the visible work.
 
-```bash
-# Antigravity 2.0 (Primary)
-gsd-canva init --agent antigravity
+That metaphor fits the project:
 
-# Codex
-gsd-canva init --agent codex
-
-# OpenCode (Experimental)
-gsd-canva init --agent opencode
-
-# Todos los adapters soportados
-gsd-canva init --agent all
-
-# Sin adapter (solo infraestructura base)
-gsd-canva init
-```
-
-Opciones adicionales:
-
-*   `--force-all`: Fuerza la regeneración de artifacts oficiales, con backup automático de archivos modificados localmente.
-*   `--adopt`: Registra artifacts existentes en el manifest sin sobrescribir contenido del usuario.
-
-### 3. Diagnóstico de Salud
-Verifica la salud del espacio de trabajo y la integridad de los artifacts del agente:
-
-```bash
-gsd-canva doctor --agent antigravity
-gsd-canva doctor --agent codex
-gsd-canva doctor --agent opencode
-gsd-canva doctor --agent all
-```
-
-### 4. Actualización
-
-```bash
-gsd-canva upgrade
-```
-
-Regenera los artifacts gestionados por adapter desde la fuente neutral. Si un archivo managed fue modificado localmente, se crea un backup `.bak.YYYYMMDDHHMMSS` antes de sobrescribir.
-
-*   `upgrade --adopt`: Preserva el contenido del usuario para archivos modificados, solo actualiza el hash en el manifest.
-*   `upgrade --force-all`: Regenera también artifacts oficiales no gestionados que existan en disco.
+- the specification is the underdrawing,
+- the deterministic workflow is the structure beneath the creative output,
+- the final design remains a human-led work,
+- and the agent helps trace, preserve, and follow that structure.
 
 ---
 
-## 📋 Comandos Slash e Interfaces del Agente
+## Creative Phases
 
-Los comandos slash son generados por los adapters y descubiertos por cada agente en su formato nativo. Antigravity 2.0 los consume como **workspace skills** en `.agents/skills/<id>/SKILL.md`.
+Sinopia frames the design process as the creation of a work of art.
 
-### 1. `/canva-mockup <nombre_diseño>`
-*   **Fase**: `mockup:pending`
-*   **Acción**: Crea la carpeta secuencial `canva-plans/plan_XXX` con lock atómico. Invita a completar el levantamiento conceptual, la investigación cromática y tipográfica, y redactar una maqueta HTML interactiva premium (`mockup.html`) antes de tocar Canva.
-*   **Transición**: Al aprobarse la propuesta por el usuario, el agente corre `gsd-canva plan approve-mockup --id <id>` (Estado: `mockup:approved`).
+| Phase | Software concept | Artistic term | Role |
+| --- | --- | --- | --- |
+| 0 | Brief / initial configuration | **Gesso** | Prepares the creative surface: intent, audience, tone, context, constraints, and metadata. |
+| 1 | Mockup / wireframe | **Abbozzo** | Creates the structural sketch: composition, layout, hierarchy, and content blocks. |
+| 2 | Templates / design options | **Studi** | Explores visual studies: multiple aesthetic directions from one structure. |
+| 3 | Output files / deliverables | **Opere** | Produces final works: polished, personalized pieces ready for use. |
 
-### 2. `/canva-draft [ID]`
-*   **Fase**: `draft:pending` -> `draft:approved`
-*   **Acción**: Genera borradores en la API de Canva subiendo assets con el MCP. Expone los enlaces directos editables y un carrusel de vistas previas en el chat.
-*   **Bucle de Feedback**: Si el usuario no aprueba ninguna variante, solicita cambios, los aplica directamente en Canva y expone nuevas miniaturas.
-*   **Registro**: Al aprobarse, escanea los elementos (`canva/get-design-content`) y registra placeholders en `system_templates.json` vía `gsd-canva template register`.
-*   **Transición**: El agente corre `gsd-canva plan approve-draft --id <id>` (Estado: `draft:approved`).
-
-### 3. `/canva-refine [ID]`
-*   **Fase**: `refine:pending` -> `deliver:ready`
-*   **Acción**: Aplica modificaciones matemáticas pixel-perfect (e.g. mover texto 20px arriba, cambiar tamaño a 24px) llamando a `canva/start-editing-transaction` y `canva/perform-editing-operations` sobre los placeholders registrados.
-*   **Transición**: Al aprobarse, el agente corre `gsd-canva plan approve-refine --id <id>` y transiciona directamente a `deliver:ready`.
-
-### 4. `/canva-deliver [ID]`
-*   **Fase**: `deliver:ready` -> `delivered`
-*   **Acción**: El agente exporta a Canva (`canva/export-design`), descarga el asset y lo guarda en `delivery/plan_[ID]/`.
-*   **Verificación**: Invoca a `gsd-canva plan deliver --id <id>`. El CLI inspecciona la presencia física de al menos un archivo `.png` o `.pdf` mayor a cero bytes, y bloquea el estado final como **`delivered`**.
+The artistic language is not meant to obscure the system. It gives the workflow identity while the underlying mechanics stay explicit and auditable.
 
 ---
 
-## 🔄 Migración desde Instalaciones Legacy
+## Multilingual Invocation
 
-Si tu proyecto fue inicializado con una versión anterior de `gsd-canva` que usaba `.antigravity/commands/` como superficie primaria:
+Sinopia is designed around one conceptual skill per phase, with multiple aliases rather than duplicated logic.
 
-1.  Ejecuta `gsd-canva upgrade` para migrar el manifest a v2 y registrar los adapters.
-2.  Ejecuta `gsd-canva init --agent antigravity` para instalar los skills de Antigravity 2.0.
-3.  Los archivos en `.antigravity/commands/` se mantienen por compatibilidad pero están deprecados.
-4.  La superficie primaria para Antigravity 2.0 es ahora `.agents/skills/<id>/SKILL.md`.
+| Phase | Conceptual skill | Spanish | English | Italian | Compatibility |
+| --- | --- | --- | --- | --- | --- |
+| 0 | Gesso | `/lienzo-en-blanco` | `/blank-canvas` | `/tela-bianca`, `/gesso` | `/canva-blank-canvas` |
+| 1 | Abbozzo | `/boceto` | `/sketch`, `/wireframe` | `/abbozzo` | `/canva-mockup` |
+| 2 | Studi | `/estudios` | `/studies` | `/studi` | `/canva-draft` |
+| 3 | Opere | `/obras` | `/works` | `/opere` | `/canva-deliver`, `/canva-refine` |
 
-> `.antigravity/commands/` es una superficie legacy. No se eliminará automáticamente, pero los comandos slash del agente se descubren desde `.agents/skills/` en Antigravity 2.0.
+The `canva-*` names preserve continuity with the original project. The artistic names express the direction of the new framework.
 
 ---
 
-## 🤖 Modo Máquina a Máquina (`--json`)
+## Design Principles
 
-Para flujos automatizados de agentes, todos los comandos de consulta y transiciones aceptan la bandera `--json`.
+**Human-led**
 
-*   **Éxito (`stdout` limpia y `stderr` en silencio)**:
-    ```json
-    {
-      "ok": true,
-      "data": {
-        "planId": "001",
-        "planDir": "canva-plans/plan_001_banner-corporativo"
-      }
-    }
-    ```
-*   **Error (`stdout` en silencio y error JSON estructurado en `stderr` con exit code no nulo)**:
-    ```json
-    {
-      "ok": false,
-      "code": "GSDC_INVALID_STATE",
-      "message": "Transición ilegal: Se esperaba phase:status mockup:pending para aprobar mockup. Estado actual: mockup:approved.",
-      "details": {}
-    }
-    ```
+The user is the artist. The agent is an assistant, not the source of creative authority.
 
-### Catálogo Oficial de Errores
+**Spec-driven**
 
-| Código de Error | Exit Code | Descripción |
-| :--- | :---: | :--- |
-| `GSDC_LOCK_TIMEOUT` | `10` | Lockfile ocupado tras expirar timeout (configurable vía `GSD_CANVA_LOCK_TIMEOUT_MS`). |
-| `GSDC_INIT_CONFLICT` | `11` | Conflicto detectado en preflight por archivo modificado localmente sin registrar en manifiesto. |
-| `GSDC_MANIFEST_MISSING` | `12` | Carpeta `.gsd-canva/` existe pero falta `manifest.json`. Requiere `--adopt` o `--force-all`. |
-| `GSDC_INVALID_STATE` | `13` | Transición ilegal en `plan.json` (fase o estatus incorrecto en la máquina de estados). |
-| `GSDC_DELIVERY_MISSING` | `14` | Falta de entregable válido: Sin archivos `.png` o `.pdf` mayores a 0 bytes en `delivery/plan_[ID]/`. |
-| `GSDC_JSON_PARSE_ERROR` | `15` | Archivo de estado `plan.json` o `system_templates.json` corrupto o ilegible. |
-| `GSDC_PERMISSION_DENIED` | `16` | Error de permisos de escritura o lectura en la fase transaccional de preflight. |
-| `GSDC_ADAPTER_UNKNOWN` | `17` | El agente solicitado a través de `--agent` no es compatible. |
-| `GSDC_AGENT_DISCOVERY_FAILED` | `18` | Validación estructural fallida en la ruta de prompts del agente. |
-| `GSDC_AGENT_SKILLS_MISSING` | `19` | Faltan skills o comandos oficiales del agente validado por `doctor`. |
-| `GSDC_ARTIFACT_MISSING` | `20` | Artefacto físico requerido (ej: `mockup.html`) no encontrado. |
-| `GSDC_DECISIONS_CHANGED_AFTER_CONFIRMATION` | `21` | Tampering detectado: las decisiones fueron alteradas tras la confirmación criptográfica. |
-| `GSDC_INVALID_FIELD` | `22` | Campo no reconocido en `plan answer`. |
-| `GSDC_DECISIONS_LOCKED` | `23` | Decisiones confirmadas; usar `reset-confirmation` para modificar. |
-| `GSDC_INVALID_CHOICE_VALUE` | `26` | Valor inválido para campo de selección (numérico, placeholder, o fuera de opciones). |
-| `GSDC_STALE_MOCKUP` | `27` | `mockup.html` anterior a la confirmación; regenerar antes de enviar. |
+Creative intent should become durable artifacts before production begins.
+
+**Deterministic where it matters**
+
+The system should use explicit state, files, confirmations, and validations to reduce ambiguity.
+
+**Conversational, not form-driven**
+
+The user should be able to explore freely, while the agent quietly turns that exploration into structured context.
+
+**Auditable**
+
+Every important creative decision should be recoverable later: what was agreed, why it mattered, and what artifact used it.
+
+**Compatible**
+
+The framework can still support existing agent surfaces and Canva-oriented commands while moving toward the Sinopia language.
+
+---
+
+## Current Status
+
+Sinopia is a public fork and vision-stage evolution of `gsd-canva`.
+
+The current codebase still contains the original `gsd-canva` CLI, adapters, plans, and Canva workflow artifacts. The new Sinopia vision is being shaped in documentation first before the implementation is renamed or restructured.
+
+Important vision documents:
+
+- [`docs/VISION_lenguaje_artistico.md`](docs/VISION_lenguaje_artistico.md)
+- [`docs/PROPOSAL_v1.5_lienzo_en_blanco.md`](docs/PROPOSAL_v1.5_lienzo_en_blanco.md)
+
+---
+
+## Project Direction
+
+Sinopia will evolve toward a framework where:
+
+- the blank canvas phase captures creative intent before technical decisions,
+- `gesso.md` replaces cold administrative naming like `brief.md`,
+- agent skills are presented through clear multilingual aliases,
+- artistic phase names guide the experience without hiding the mechanics,
+- the agent behaves as a disciplined studio assistant,
+- and the process remains deterministic even when AI-generated outputs are uncertain.
+
+In short:
+
+> AI can generate the image. Sinopia protects the intent.
+
