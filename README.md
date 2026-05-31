@@ -1,5 +1,9 @@
 # Sinopia
 
+<p align="center">
+  <img src="docs/images/sinopia_logo.png" alt="Sinopia Logo" width="300" />
+</p>
+
 **Spec-driven creative workflow for human-led AI design.**
 
 Sinopia is an early-stage framework for making AI-assisted design less chaotic, more auditable, and more human-directed.
