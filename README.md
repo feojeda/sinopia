@@ -165,6 +165,12 @@ Sinopia is the conceptual and architectural evolution of `gsd-canva`. Currently,
 
 ---
 
+## Documentation
+
+- **[Command Reference: gesso](docs/commands/gesso.md)** — Full CLI reference for all `gsd-canva gesso` subcommands.
+- [Implementation Plans](docs/implementation_plans/) — Phase-by-phase implementation docs.
+- [Guides](docs/guides/) — User guides (also in [Spanish](docs/guides/gesso_lienzo_en_blanco.md)).
+
 ## Catálogo Oficial de Errores
 
 | Code | Exit | Description |
@@ -173,3 +179,9 @@ Sinopia is the conceptual and architectural evolution of `gsd-canva`. Currently,
 | `GSDC_DECISIONS_LOCKED` | 23 | Attempted to modify decisions after confirmation. |
 | `GSDC_INVALID_CHOICE_VALUE` | 26 | Selected value is not in the allowed choices list. |
 | `GSDC_STALE_MOCKUP` | 27 | mockup.html exists from a previous confirmation cycle. |
+| `GSDC_GESSO_NOT_FOUND` | 31 | Lienzo not found. |
+| `GSDC_GESSO_INVALID_STATE` | 32 | Illegal state transition for lienzo. |
+| `GSDC_GESSO_ARTIFACT_MISSING` | 33 | gesso.md missing or empty. |
+| `GSDC_GESSO_INVALID_ARTIFACT` | 34 | gesso.md does not meet minimum contract. |
+| `GSDC_GESSO_CHANGED_AFTER_CONFIRMATION` | 35 | gesso.md hash does not match confirmation. |
+| `GSDC_GESSO_LINK_FAILED` | 36 | Could not link lienzo to plan. |
